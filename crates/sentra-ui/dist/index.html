@@ -4,9 +4,11 @@
 <body>
 <!-- harness launcher: initial view -->
 <div id="harness">
+  <div class="h-kicker">agent console</div>
   <header class="h-top">
-    <img src="icons/logo.svg" class="h-logo" alt="">
-    <div class="h-brand"><h1>Sentra</h1><p class="muted">many agent terminals, one window</p></div>
+    <img src="logo.svg" class="h-logo" alt="" style="display:none">
+    <div class="h-brand"><h1>many terminals, <em>one window</em></h1>
+    <p class="muted">spawn hermes, omp, claude, codex — lalu suruh mereka saling lempar kerjaan.</p></div>
   </header>
   <form class="h-bar" id="hform">
     <span class="h-at">@</span>
@@ -20,7 +22,7 @@
     <button type="button" data-p="codex">@codex</button>
     <button type="button" data-p="bash">@bash</button>
   </div>
-  <p class="muted h-hint">Enter = spawn setiap @agent ke terminalnya sendiri, grid 2×2.</p>
+  <p class="h-hint"><b>ENTER</b> = spawn setiap @agent ke terminalnya sendiri, grid 2×2</p>
 </div>
 <!-- app: roster + quad grid + command bar -->
 <main id="app" hidden>

@@ -101,8 +101,11 @@ fn http_conn(mut s: std::net::TcpStream) -> Result<(), String> {
         ("GET", "/style.css") => http_static(s, "style.css"),
         ("GET", "/logo.svg") => http_static(s, "logo.svg"),
         ("GET", "/xterm.js") => http_static(s, "vendor/xterm.js"),
+        ("GET", "/font-archivo.woff2") => http_static(s, "fonts/Archivo.woff2"),
+        ("GET", "/font-inter.woff2") => http_static(s, "fonts/Inter.woff2"),
+        ("GET", "/font-mono.woff2") => http_static(s, "fonts/GeistMono.woff2"),
         ("GET", "/xterm.css") => http_static(s, "vendor/xterm.css"),
-        ("GET", "/addon-fit.js") => http_static(s, "vendor/addon-fit.js"),
+        ("GET", p) if p.starts_with("/vendor/") => http_static(s, &p[1..]),
         ("GET", "/events") => sse_conn(s),
         ("POST", "/api") => {
             let mut body = vec![0u8; len];
@@ -136,6 +139,7 @@ fn http_static(mut s: std::net::TcpStream, rel: &str) -> Result<(), String> {
         Some("js") => "application/javascript",
         Some("css") => "text/css",
         Some("svg") => "image/svg+xml",
+        Some("woff2") => "font/woff2",
         Some("png") => "image/png",
         _ => "application/octet-stream",
     };

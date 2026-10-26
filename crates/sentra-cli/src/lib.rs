@@ -261,7 +261,8 @@ fn build_wait(rest: &[&String]) -> Result<Value, String> {
 
 fn build_send(rest: &[&String]) -> Result<Value, String> {
     let t = target(rest)?;
-    let text = rest.get(1).map(|s| s.as_str()).unwrap_or("");
+    let args: Vec<&String> = rest.iter().filter(|a| a.as_str() != "--no-enter").copied().collect();
+    let text = args.get(1).map(|s| s.as_str()).unwrap_or("");
     let enter = !rest.iter().any(|a| a.as_str() == "--no-enter");
     Ok(json!({"cmd":"send","id":t,"text":text,"enter":enter}))
 }

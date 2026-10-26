@@ -9,13 +9,19 @@ const pending = new Map();      // reqId -> {resolve, reject}
 let evtHandler = null;          // fn(evt) for pushed events
 let sock = null;                // tauri channel id
 
+const USE_TAURI = typeof window !== 'undefined' && !!window.__TAURI__;
 async function rpc(cmd_obj) {
-  const id = seq++;
-  const line = JSON.stringify({ ...cmd_obj, _req: id });
-  const p = new Promise((res, rej) => pending.set(id, { res, rej }));
-  const { invoke } = window.__TAURI__.core;
-  await invoke("send_line", { line });
-  return p;
+  if (USE_TAURI) {
+    const id = seq++;
+    const line = JSON.stringify({ ...cmd_obj, _req: id });
+    const p = new Promise((res, rej) => pending.set(id, { res, rej }));
+    const { invoke } = window.__TAURI__.core;
+    await invoke("send_line", { line });
+    return p;
+  }
+  // browser fallback: POST /api, response carries no _req
+  const r = await fetch('/api', { method: 'POST', body: JSON.stringify(cmd_obj) });
+  return r.json();
 }
 
 // Tauri side pushes every line from the conn as event://sentra-line
@@ -32,10 +38,16 @@ function onLine(line) {
 }
 
 async function main() {
-  if (!window.__TAURI__) throw new Error("Tauri global missing — is the daemon running? start with: `sentra serve`");
-  const { listen } = window.__TAURI__.event;
-  await listen("sentra-line", (e) => onLine(e.payload));
-  await window.__TAURI__.core.invoke("connect");
+  if (USE_TAURI) {
+    const { listen } = window.__TAURI__.event;
+    await listen("sentra-line", (e) => onLine(e.payload));
+    await window.__TAURI__.core.invoke("connect");
+  } else {
+    const es = new EventSource('/events');
+    es.onmessage = (e) => onLine(e.data);
+  }
+
+  document.fonts.ready.then(() => { for (const p of state.panes.values()) p.fit && p.fit.fit(); });
 
   // --- state ---
   const state = { agents: new Map(), focus: null, panes: new Map() };
@@ -44,7 +56,7 @@ async function main() {
   // ===== harness launcher =====
   const harnessEl = document.getElementById('harness');
   const appEl = document.getElementById('app');
-  const HUE = { hermes: 'h-red', claude: 'h-blue', omp: 'h-yellow', codex: 'h-pink' };
+  // ArtCraft: single accent, no per-preset hues
   function parseHarness(s) {
     // "@hermes handle ui  @claude front end" → [{preset:'hermes',task:'handle ui'},…]
     const out = [];
@@ -111,14 +123,14 @@ async function main() {
   async function openPane(id, preset) {
     if (state.panes.has(id)) return state.panes.get(id);
     const pane = document.createElement('div');
-    pane.className = 'gpane ' + (HUE[preset] || '');
+    pane.className = 'gpane';
     const a = state.agents.get(id) || {};
     pane.innerHTML = `<div class="gtitle"><span class="dot live"></span>` +
       `<span class="gname">${esc(a.name || ('agent ' + id))}</span>` +
       `<span class="gargv">${esc((a.argv || []).join(' '))}</span></div>` +
       `<div class="gdead"></div><div class="gterm"></div>`;
     gridEl.appendChild(pane);
-    const term = new Terminal({ convertEol: false, cursorBlink: true, fontFamily: '"JetBrains Mono","Fira Code",monospace', fontSize: 12, theme: { background: '#101216', foreground: '#d6dde6', cursor: '#7aa2f7', selectionBackground: '#2a3447' } });
+    const term = new Terminal({ convertEol: false, cursorBlink: true, fontFamily: '"Geist Mono","JetBrains Mono",monospace', fontSize: 12.5, theme: XTERM_LIGHT });
     const fit = new FitAddon();
     term.loadAddon(fit);
     term.open(pane.querySelector('.gterm'));
@@ -130,6 +142,7 @@ async function main() {
     term.onData((d) => rpc({ cmd: 'send', id: String(id), text: d, enter: false }));
     term.onResize(({ cols, rows }) => rpc({ cmd: 'resize', id: String(id), cols, rows }));
     pane.querySelector('.gtitle').onclick = () => focusPane(id);
+    pane.querySelector('.gtitle').oncontextmenu = (e) => { e.preventDefault(); focusPane(id); openHandoff(id); };
     refitAll();
     focusPane(id);
     return rec;
@@ -251,11 +264,22 @@ async function main() {
     if (evt.evt === 'spawned') { await refreshList(); await openPane(evt.id); return; }
   };
   window.__sentra = { killFocused, spawnUi, focusPane, state, hoMsg: (t) => { document.getElementById('ho-msg').value = t; }, hoTarget: (id) => { document.getElementById('ho-target').value = String(id); } };
+// xterm palette tuned for warm paper #ffffff panes — light-on-light readable
+const XTERM_LIGHT = {
+  background: '#ffffff', foreground: '#101014', cursor: '#2d81ff', cursorAccent: '#ffffff',
+  selectionBackground: '#2d81ff33',
+  black: '#101014', red: '#d94b4b', green: '#1a7f37', yellow: '#9a6700',
+  blue: '#2d81ff', magenta: '#a0309a', cyan: '#0f7f8c', white: '#a3a3ab',
+  brightBlack: '#73737c', brightRed: '#e05252', brightGreen: '#22863a', brightYellow: '#b08800',
+  brightBlue: '#4c94ff', brightMagenta: '#bc4cba', brightCyan: '#189aa9', brightWhite: '#101014',
+};
+const _lastOut = new Map();
+function markOutput(id) { _lastOut.set(id, Date.now()); }
 
   // Rust pump already subscribed the watch conn to the global feed
   await refreshList();
   if (state.agents.size) { harnessEl.hidden = true; appEl.hidden = false; }
-  // auto-open panes for existing agents (UI restart mid-flight); remembered preset hue via map
+  // auto-open panes for existing agents (UI restart mid-flight)
   for (const id of [...state.agents.keys()].sort((a, b) => a - b).slice(0, 12)) await openPane(id);
 
   // --- handoff dialog ---
@@ -322,5 +346,5 @@ async function main() {
 }
 
 main().catch((e) => {
-  document.body.innerHTML = `<div style="padding:24px;color:#f7768e;font-family:monospace">sentra-ui: ${String(e)}<br>is the daemon running? start with: <code>sentra serve</code></div>`;
+  document.body.innerHTML = `<div class="boot-error"><h1>Sentra can't reach the daemon</h1><p>start it with <code>sentra serve</code>, then reload</p><code>${String(e)}</code></div>`;
 });
