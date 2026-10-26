@@ -10,6 +10,8 @@ members = [
 edition = "2024"
 version = "0.1.0"
 license = "MIT"
+repository = "https://github.com/dewhush/sentra"
+description = "Many AI-agent terminals, one window — agents hand work to each other (send → wait → read)."
 
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }

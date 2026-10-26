@@ -1,0 +1,26 @@
+name: Feature request
+description: Propose a change that fits the daemon-owns-PTYs design.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What can't you do today? Real workflow, not speculation.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: What should happen instead? CLI verbs / protocol / UI — be specific.
+    validations:
+      required: true
+  - type: checkboxes
+    id: cuts
+    attributes:
+      label: Hard-cut check
+      description: These are rejected scope — proposals touching them will be closed.
+      options:
+        - label: My idea is NOT mobile / SSH-remote / git-worktrees / browser-embed / GitHub-integration / marketplace / kanban / telemetry / theming / async
+          required: true

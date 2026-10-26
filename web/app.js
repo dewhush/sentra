@@ -148,9 +148,37 @@ function connect() {
     if (ev.evt === "exit") {
       const a = agents.get(ev.id);
       if (a) { a.alive = false; renderRoster(); }
+      showSuggest(ev.id, ev.code);
     }
   };
 }
 
-connect();
+// auto-learn strip: on agent exit offer save-lessons / respawn
+function showSuggest(id, code) {
+  const el = document.getElementById("suggest");
+  if (!el) return;
+  el.hidden = false;
+  el.innerHTML = "";
+  const tag = document.createElement("span");
+  tag.className = "s-tag"; tag.textContent = "auto-learn";
+  const note = document.createElement("span");
+  const a = agents.get(id);
+  note.textContent = `agent ${a ? a.name : "#" + id} exited (code ${code}) —`;
+  el.append(tag, note);
+  const mk = (label, fn) => {
+    const b = document.createElement("button");
+    b.type = "button"; b.textContent = label; b.onclick = fn;
+    el.appendChild(b);
+  };
+  mk("save last output as lesson", async () => {
+    const r = await api("read", { id: String(id), tail: 4000 });
+    if (r.ok) {
+      const key = a ? a.name.replace(/[^\w-]/g, "_") : String(id);
+      await api("lessons", { key, text: (r.chunk || "").trim().slice(-4000) || "(kosong)" });
+      note.textContent = "lesson disimpan.";
+    }
+  });
+  if (a) mk("respawn " + a.name, () => spawnPreset(a.argv[0]));
+  mk("dismiss", () => { el.hidden = true; });
+}
 refreshList();

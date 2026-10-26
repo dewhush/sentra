@@ -1,0 +1,137 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><style>
+@font-face { font-family:'Archivo'; src:url('/tmp/bfonts/Archivo.woff2') format('woff2'); font-weight:100 900; }
+@font-face { font-family:'Geist Mono'; src:url('/tmp/bfonts/GeistMono.woff2') format('woff2'); font-weight:100 900; }
+@font-face { font-family:'Instrument Serif'; src:url('/tmp/bfonts/InstrumentSerif-Italic.woff2') format('woff2'); font-weight:400; font-style:italic; }
+@font-face { font-family:'Inter'; src:url('/tmp/bfonts/Inter.woff2') format('woff2'); font-weight:100 900; }
+* { margin:0; padding:0; box-sizing:border-box; }
+html,body { width:1280px; height:640px; overflow:hidden; }
+body {
+  background:#f2f1ee; color:#101014;
+  font-family:'Inter',sans-serif;
+  display:flex; flex-direction:column;
+  -webkit-font-smoothing:antialiased;
+}
+.frame { position:relative; flex:1; overflow:hidden; }
+
+/* faint blueprint grid */
+.grid-bg {
+  position:absolute; inset:0;
+  background-image:
+    linear-gradient(#1010140a 1px, transparent 1px),
+    linear-gradient(90deg, #1010140a 1px, transparent 1px);
+  background-size:32px 32px;
+}
+/* electric sweep */
+.sweep {
+  position:absolute; right:-140px; top:-140px; width:520px; height:520px;
+  background:radial-gradient(circle at center, #2d81ff22 0%, transparent 62%);
+}
+
+/* top strip */
+.strip {
+  position:absolute; top:36px; left:64px; right:64px;
+  display:flex; align-items:center; gap:12px;
+  font-family:'Geist Mono',monospace; font-size:13px; letter-spacing:0.22em; color:#73737c;
+}
+.strip .logo { width:26px; height:26px; }
+.strip .word { color:#101014; font-weight:700; }
+.strip .sp { flex:1; }
+.strip .tag {
+  font-size:11px; letter-spacing:0.14em; color:#2d81ff;
+  border:1px solid #2d81ff55; border-radius:999px; padding:5px 14px;
+}
+
+/* headline */
+.headline { position:absolute; left:64px; top:132px; right:64px; }
+.headline h1 {
+  font-family:'Archivo',sans-serif; font-weight:640;
+  font-size:76px; line-height:1.02; letter-spacing:-2.4px;
+}
+.headline h1 em { font-family:'Instrument Serif',Georgia,serif; font-style:italic; font-weight:400; letter-spacing:0; }
+.headline p {
+  margin-top:18px; font-size:19px; line-height:1.5; color:#73737c; max-width:62ch;
+}
+.headline p b { color:#101014; font-weight:600; }
+
+/* terminal strip: four mini panes */
+.panes {
+  position:absolute; left:64px; right:64px; bottom:56px;
+  display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:14px;
+}
+.pane {
+  background:#ffffff; border:1px solid #e5e7eb; border-radius:10px;
+  overflow:hidden; box-shadow:0 10px 26px #10101412;
+}
+.pane .t {
+  display:flex; align-items:center; gap:8px; padding:8px 12px;
+  border-bottom:1px solid #e5e7eb;
+  font-family:'Geist Mono',monospace; font-size:11px; letter-spacing:0.1em;
+  text-transform:uppercase; color:#73737c;
+}
+.pane .t .dot { width:7px; height:7px; border-radius:50%; background:#1a7f37; }
+.pane .t .dot.blue { background:#2d81ff; }
+.pane .t .name { font-weight:700; color:#101014; }
+.pane .t .x { margin-left:auto; color:#a3a3ab; }
+.pane .body {
+  padding:10px 12px; height:96px;
+  font-family:'Geist Mono',monospace; font-size:12.5px; line-height:1.65; color:#101014;
+  white-space:pre; overflow:hidden;
+}
+.pane .body .c { color:#73737c; }
+.pane .body .b { color:#2d81ff; }
+.pane .body .g { color:#1a7f37; }
+.pane.hot { border-color:#101014; box-shadow:0 0 0 1px #101014, 0 10px 26px #10101412; }
+
+/* bottom bar */
+.foot {
+  position:absolute; left:64px; right:64px; bottom:20px;
+  display:flex; align-items:center; gap:14px;
+  font-family:'Geist Mono',monospace; font-size:11.5px; letter-spacing:0.08em; color:#a3a3ab;
+}
+.foot kbd {
+  font-family:'Geist Mono',monospace; font-size:10px; color:#73737c;
+  border:1px solid #e5e7eb; border-radius:4px; padding:1px 6px; background:#ffffff;
+}
+.foot .sp { flex:1; }
+.foot .url { color:#2d81ff; }
+</style></head>
+<body>
+<div class="frame">
+ <div class="grid-bg"></div><div class="sweep"></div>
+ <div class="strip">
+  <svg class="logo" viewBox="0 0 32 32" fill="none">
+    <rect x="2" y="2" width="28" height="28" rx="7" fill="#101014"/>
+    <path d="M9 20 L16 9 L23 20" stroke="#f2f1ee" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    <circle cx="16" cy="22.5" r="2.2" fill="#2d81ff"/>
+  </svg>
+  <span class="word">SENTRA</span><span>AGENT HARNESS</span>
+  <span class="sp"></span><span class="tag">v0.1 · LINUX</span>
+ </div>
+ <div class="headline">
+  <h1>many terminals,<br><em>one window.</em></h1>
+  <p>Spawn <b>hermes · omp · claude · codex</b> panes in one grid, then let them
+  <b>hand work to each other</b> — <b>send → wait → read</b>, from the GUI or one line of shell.</p>
+ </div>
+ <div class="panes">
+  <div class="pane hot"><div class="t"><span class="dot"></span><span class="name">omp</span><span class="x">✕</span></div>
+   <div class="body"><span class="c">$</span> sentra send omp "review diff"<span class="g">
+✓ 3 security bugs found
+→ handing to claude…</span></div></div>
+  <div class="pane"><div class="t"><span class="dot blue"></span><span class="name">claude</span><span class="x">✕</span></div>
+   <div class="body"><span class="c">omp said:</span> 3 bugs<span class="b">
+ fixing top issue now…
+ </span>patch ready <span class="g">✓</span></div></div>
+  <div class="pane"><div class="t"><span class="dot blue"></span><span class="name">codex</span><span class="x">✕</span></div>
+   <div class="body"><span class="c">$</span> wait --idle-ms 5000<span class="b">
+ idle ✓ output copied</span></div></div>
+  <div class="pane"><div class="t"><span class="dot"></span><span class="name">bash</span><span class="x">✕</span></div>
+   <div class="body"><span class="c">$</span> cargo build --release<span class="g">
+    Finished in 42s ✓</span></div></div>
+ </div>
+ <div class="foot">
+  <span><kbd>CTRL-SHIFT-↑</kbd> split</span><span><kbd>CTRL-SHIFT-W</kbd> kill</span><span><kbd>CTRL-TAB</kbd> cycle</span>
+  <span class="sp"></span><span class="url">github.com/dewhush/sentra</span>
+ </div>
+</div>
+</body></html>

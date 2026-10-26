@@ -1,0 +1,49 @@
+name: Bug report
+description: Something broke — spawn, send/wait/read, UI panes, presets.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The daemon survives agent crashes by design. Paste the **daemon stderr**
+        and the exact commands you ran.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Expected vs actual. Include the exact `sentra …` command or UI action.
+      placeholder: sentra spawn --preset omp → {"ok":false,"err":"spawn: …"}
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Minimal repro
+      placeholder: |
+        export SENTRA_SOCKET=/tmp/s.sock
+        sentra serve &  # or SENTRA_TCP=127.0.0.1:7621
+        sentra spawn --preset bash
+        sentra send 1 "echo hi"
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version / commit
+      placeholder: sentra 0.1.0 (abc1234)
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: OS / desktop
+      placeholder: Kali rolling, kernel 7.1.5, X11
+    validations:
+      required: true
+  - type: checkboxes
+    id: sanity
+    attributes:
+      label: Checks
+      options:
+        - label: bash scripts/smoke.sh exits 0 on my machine
+        - label: I checked this isn't one of the hard cuts (mobile, relay, worktrees, …)

@@ -4,51 +4,80 @@
 <body>
 <!-- harness launcher: initial view -->
 <div id="harness">
-  <div class="h-kicker">agent console</div>
-  <header class="h-top">
-    <img src="logo.svg" class="h-logo" alt="" style="display:none">
-    <div class="h-brand"><h1>many terminals, <em>one window</em></h1>
-    <p class="muted">spawn hermes, omp, claude, codex — lalu suruh mereka saling lempar kerjaan.</p></div>
-  </header>
-  <form class="h-bar" id="hform">
-    <span class="h-at">@</span>
-    <input id="hinput" autocomplete="off" spellcheck="false"
-      placeholder="@hermes handle ui   @claude handle front end   @omp handle backend   @codex handle security">
-  </form>
-  <div class="h-chips">
-    <button type="button" data-p="hermes">@hermes</button>
-    <button type="button" data-p="claude">@claude</button>
-    <button type="button" data-p="omp">@omp</button>
-    <button type="button" data-p="codex">@codex</button>
-    <button type="button" data-p="bash">@bash</button>
-  </div>
-  <p class="h-hint"><b>ENTER</b> = spawn setiap @agent ke terminalnya sendiri, grid 2×2</p>
+ <div class="h-kicker">agent console</div>
+ <header class="h-top">
+ <img src="logo.svg" class="h-logo" alt="Sentra">
+ <div class="h-brand"><h1>many terminals, <em>one window</em></h1>
+ <p class="muted">spawn hermes, omp, claude, codex - lalu suruh mereka saling lempar kerjaan.</p></div>
+ </header>
+ <form class="h-bar" id="hform">
+ <span class="h-at">@</span>
+ <input id="hinput" autocomplete="off" spellcheck="false"
+ placeholder="@hermes handle ui @claude handle front end @omp handle backend @codex handle security">
+ </form>
+ <div class="h-chips" id="hchips">
+ <button type="button" data-p="hermes">@hermes</button>
+ <button type="button" data-p="claude">@claude</button>
+ <button type="button" data-p="omp">@omp</button>
+ <button type="button" data-p="codex">@codex</button>
+ <button type="button" data-p="bash">@bash</button>
+ </div>
+ <div id="hprofiles" class="h-chips"></div>
+ <p class="h-hint">Enter = spawn preset &middot; free text = raw argv</p>
+ <div id="hstatus" class="h-hint"></div>
 </div>
-<!-- app: roster + quad grid + command bar -->
+
+<!-- main app -->
+<div id="topbar" class="topbar">
+ <div class="tb-left"><img src="logo.svg" alt="" class="tb-logo"><span class="tb-word">SENTRA</span><span class="tb-sub">orchestrator</span></div>
+ <div class="tb-right" id="tstat"></div>
+</div>
+
 <main id="app" hidden>
-  <aside id="roster">
-    <div class="roster-title">AGENTS</div>
-    <div id="roster-rows"></div>
-  </aside>
-  <section id="main">
-    <div id="grid"></div>
-    <form id="bar"><span id="prompt">&gt;</span><input id="cmd" autocomplete="off" spellcheck="false" placeholder="preset atau argv…">
-      <div id="chips"></div>
-    </form>
-  </section>
-</main>
+ <section id="main">
+ <aside id="roster">
+ <div class="roster-title" id="rt-title">AGENTS</div>
+ <div id="roster-rows"></div>
+ <div class="roster-sub">PRESETS</div>
+ <div id="roster-presets"></div>
+ <div class="roster-hint">Enter = spawn preset<br>free text = raw argv</div>
+ </aside>
+ <div id="panes-wrap">
+ <div id="grid"></div>
+ <div id="handrail" class="hidden"><span class="hr-dot"></span><span id="hr-text"></span></div>
+ <div id="suggest" hidden></div>
+ </div>
+ <aside id="handrail-card" class="hidden">
+ <div class="hc-title">HANDOFF</div>
+ <div id="hc-flow"></div>
+ <button id="hc-copy" hidden>COPY OUTPUT</button>
+ </aside>
+ <section id="cmdbar">
+ <form id="bar"><span id="prompt">&gt;</span><input id="cmd" autocomplete="off" spellcheck="false" placeholder="preset, @profile, atau argv...">
+ <div id="chips"></div>
+ <button id="spbtn" type="submit">SPAWN</button>
+ </form>
+ <div id="kbdrow" class="kbdrow">
+ <span><kbd>CTRL-SHIFT-&uarr;</kbd> split</span>
+ <span><kbd>CTRL-SHIFT-W</kbd> kill</span>
+ <span><kbd>CTRL-TAB</kbd> cycle</span>
+ <span><kbd>R-CLICK</kbd> send to...</span>
+ </div>
+ </section>
+ </main>
+
 <!-- handoff dialog -->
 <div id="handoff" class="hidden">
-  <div class="ho-box">
-    <div class="ho-title">SEND TO…</div>
-    <select id="ho-target"></select>
-    <textarea id="ho-msg" rows="4"></textarea>
-    <div class="ho-actions">
-      <button type="button" id="ho-cancel">Cancel</button>
-      <button type="button" id="ho-send" class="primary">Send</button>
-    </div>
-    <div id="ho-status"></div>
-  </div>
+ <div class="ho-box">
+ <div class="ho-title">SEND TO...</div>
+ <select id="ho-target"></select>
+ <textarea id="ho-msg" rows="4"></textarea>
+ <div class="ho-actions">
+ <button type="button" id="ho-cancel">Cancel</button>
+ <button type="button" id="ho-send" class="primary">Send</button>
+ </div>
+ <div id="ho-status"></div>
+ </div>
 </div>
 <script type="module" src="app.js"></script>
 </body></html>

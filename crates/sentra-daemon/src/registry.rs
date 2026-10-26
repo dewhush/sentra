@@ -12,6 +12,8 @@ const RING_CAP: usize = 262_144;
 pub struct Agent {
     pub id: u32,
     pub name: String,
+    /// Profile persona label when spawned via --profile (e.g. "backend").
+    pub role: std::sync::Mutex<Option<String>>,
     pub argv: Vec<String>,
     pub cwd: Option<String>,
     pub pid: u32,
@@ -82,6 +84,7 @@ pub fn spawn(
     let agent = Arc::new(Agent {
         id,
         name: aname,
+        role: std::sync::Mutex::new(None),
         argv,
         cwd,
         pid,

@@ -12,7 +12,7 @@ use crate::registry::{self, Agent};
 
 const RING_CAP: u32 = 262_144;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 struct Req {
     cmd: String,
     id: Option<String>,
@@ -26,6 +26,11 @@ struct Req {
     rows: Option<u16>,
     #[serde(default = "default_tail")]
     tail: u32,
+    profile: Option<String>,
+    fallback: Option<String>,
+    limit: Option<u32>,
+    key: Option<String>,
+    query: Option<String>,
     idle_ms: Option<u64>,
     exit: Option<bool>,
     timeout_ms: Option<u64>,
@@ -106,6 +111,7 @@ fn http_conn(mut s: std::net::TcpStream) -> Result<(), String> {
         ("GET", "/font-mono.woff2") => http_static(s, "fonts/GeistMono.woff2"),
         ("GET", "/xterm.css") => http_static(s, "vendor/xterm.css"),
         ("GET", p) if p.starts_with("/vendor/") => http_static(s, &p[1..]),
+        ("GET", p) if p.starts_with("/fonts/") => http_static(s, &p[1..]),
         ("GET", "/events") => sse_conn(s),
         ("POST", "/api") => {
             let mut body = vec![0u8; len];
@@ -184,9 +190,14 @@ fn tcp_conn(s: std::net::TcpStream) -> Result<(), String> {
 fn serve_unix() -> Result<(), String> {
     let path = socket_path()?;
     if let Some(dir) = path.parent() {
+        let existed = dir.exists();
         std::fs::create_dir_all(dir).map_err(|e| format!("mkdir {dir:?}: {e}"))?;
-        std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))
-            .map_err(|e| format!("chmod {dir:?}: {e}"))?;
+        // only lockdown dirs WE created; never chmod a preexisting parent
+        // like /tmp (fixes "chmod /tmp: Operation not permitted")
+        if !existed {
+            std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))
+                .map_err(|e| format!("chmod {dir:?}: {e}"))?;
+        }
     }
     let _ = std::fs::remove_file(&path);
     let listener = UnixListener::bind(&path).map_err(|e| {
@@ -337,7 +348,10 @@ fn dispatch(req: &Req) -> Value {
         "resize" => resize(req),
         "wait" => wait(req),
         "kill" => kill(req),
+        "profiles" => json!({"ok": true, "profiles": crate::profiles::profiles()}),
         "ping" => json!({"ok": true}),
+        "lessons" => lessons_cmd(req),
+        "research" => research(req),
         c => json!({"ok": false, "err": format!("unknown cmd {c:?}")}),
     }
 }
@@ -348,12 +362,14 @@ fn list() -> Value {
         .iter()
         .map(|a| {
             let (alive, exit_code) = status(a);
+            let role = crate::registry::lock(&a.role).clone();
             json!({
                 "id": a.id,
                 "name": a.name,
                 "argv": a.argv,
                 "cwd": a.cwd,
                 "pid": a.pid,
+                "role": role,
                 "alive": alive,
                 "exit_code": exit_code,
                 "last_output_age_ms": registry_last_output_ms(a).unwrap_or(u64::MAX),
@@ -382,20 +398,97 @@ fn json_str(v: &Value) -> String {
 }
 
 fn spawn(req: &Req) -> Value {
-    let argv: Vec<String> = if let Some(p) = &req.preset {
-        match presets().get(p) {
+    // profile = persona wrapping a preset: role label + preamble + lessons
+    let profile = req
+        .profile
+        .as_deref()
+        .and_then(|p| crate::profiles::profiles().get(p).cloned());
+    if req.profile.is_some() && profile.is_none() {
+        // unknown profile → preset fallback (if it exists), else argv passthrough
+        let fb = req.fallback.as_deref().or(req.profile.as_deref());
+        if let Some(p) = fb
+            && let Some(Value::Array(a)) = presets().get(p)
+            && !a.is_empty()
+        {
+            return spawn_preset_named(p, req);
+        }
+        if let Some(a) = &req.argv {
+            return spawn_argv(a.clone(), req);
+        }
+        return json!({"ok": false, "err": format!("profile {:?} not found", req.profile)});
+    }
+    let preset_of = |p: &Value| p.get("preset").and_then(Value::as_str).map(str::to_string);
+    let presets = presets();
+    let argv: Vec<String> = if let Some(pv) = &profile {
+        match preset_of(pv).as_deref().and_then(|n| presets.get(n)) {
+            Some(Value::Array(a)) if !a.is_empty() => a.iter().map(json_str).collect(),
+            _ => return json!({"ok": false, "err": "profile: preset not found"}),
+        }
+    } else if let Some(p) = &req.preset {
+        match presets.get(p) {
             Some(Value::Array(a)) if !a.is_empty() => a.iter().map(json_str).collect(),
             _ => return json!({"ok": false, "err": format!("preset {p:?} not found")}),
         }
     } else if let Some(a) = &req.argv {
         a.clone()
     } else {
-        return json!({"ok": false, "err": "spawn: need preset or argv"});
+        return json!({"ok": false, "err": "spawn: need preset, profile or argv"});
     };
     let cwd = req.cwd.clone();
-    match registry::spawn(req.name.as_deref(), argv, cwd) {
-        Ok(a) => json!({"ok": true, "id": a.id, "name": a.name, "pid": a.pid}),
-        Err(e) => json!({"ok": false, "err": e}),
+    let spawned = registry::spawn(req.name.as_deref(), argv, cwd);
+    let agent = match spawned {
+        Ok(a) => a,
+        Err(e) => return json!({"ok": false, "err": e}),
+    };
+    // stamp persona role for roster badges
+    if let Some(pv) = &profile {
+        *crate::registry::lock(&agent.role) =
+            Some(pv.get("role").and_then(Value::as_str).unwrap_or("").to_string());
+    }
+    // inject persona preamble + lessons as the agent's first stdin
+    if let Some(pv) = &profile {
+        if let Some(preamble) = pv.get("preamble").and_then(Value::as_str)
+            && !preamble.is_empty()
+        {
+            inject(&agent, preamble);
+        }
+        let lessons_key = preset_of(pv).unwrap_or_else(|| agent.name.clone());
+        let lessons = crate::lessons::load(&lessons_key);
+        if !lessons.trim().is_empty() {
+            inject(&agent, &format!("\n# lessons-learned (auto)\n{lessons}\n"));
+        }
+    }
+    json!({"ok": true, "id": agent.id, "name": agent.name, "pid": agent.pid})
+}
+
+/// Spawn straight from a preset name (used by profile fallback).
+fn spawn_preset_named(preset: &str, req: &Req) -> Value {
+    spawn(
+        &Req {
+            preset: Some(preset.to_string()),
+            profile: None,
+            fallback: None,
+            ..req.clone()
+        },
+    )
+}
+
+/// Spawn raw argv (used by unknown-profile fallback).
+fn spawn_argv(argv: Vec<String>, req: &Req) -> Value {
+    spawn(
+        &Req {
+            profile: None,
+            fallback: None,
+            argv: Some(argv),
+            ..req.clone()
+        },
+    )
+}
+/// Best-effort write into a fresh agent's TTY; failures don't fail the spawn.
+fn inject(a: &std::sync::Arc<registry::Agent>, text: &str) {
+    if let Some(mut w) = crate::registry::lock(&a.writer).take() {
+        let _ = w.write_all(text.as_bytes()).and_then(|_| w.flush());
+        *crate::registry::lock(&a.writer) = Some(w);
     }
 }
 
@@ -492,12 +585,89 @@ fn kill(req: &Req) -> Value {
         Ok(a) => a,
         Err(e) => return json!({"ok": false, "err": e}),
     };
-    let rc = unsafe { libc::kill(a.pid as libc::pid_t, libc::SIGKILL) };
-    if rc != 0 {
-        return json!({"ok": false, "err": format!("kill {}: {}", a.pid, std::io::Error::last_os_error())});
+    if !a.alive.load(std::sync::atomic::Ordering::SeqCst) {
+        return json!({"ok": false, "err": format!("agent {}: already dead", a.id)});
     }
+    let _rc = unsafe { libc::kill(a.pid as libc::pid_t, libc::SIGKILL) };
     a.killed.store(true, std::sync::atomic::Ordering::SeqCst);
     *crate::registry::lock(&a.exit_code) = Some(-9);
     json!({"ok": true, "id": a.id})
 }
 
+fn lessons_cmd(req: &Req) -> Value {
+    let Some(key) = req.key.as_deref().or(req.name.as_deref()).filter(|k| !k.is_empty()) else {
+        return json!({"ok": false, "err": "lessons: need key (profile or agent name)"});
+    };
+    if req.text.as_deref() == Some("-") {
+        match crate::lessons::clear(key) {
+            Ok(()) => json!({"ok": true, "cleared": key}),
+            Err(e) => json!({"ok": false, "err": format!("agent {key}: {e}")}),
+        }
+    } else if let Some(text) = req.text.as_deref().filter(|t| !t.trim().is_empty()) {
+        match crate::lessons::append(key, text) {
+            Ok(()) => json!({"ok": true, "key": key}),
+            Err(e) => json!({"ok": false, "err": format!("agent {key}: {e}")}),
+        }
+    } else {
+        json!({"ok": true, "key": key, "chunk": crate::lessons::load(key)})
+    }
+}
+
+fn research(req: &Req) -> Value {
+    let Some(q) = req.query.as_deref().filter(|q| !q.trim().is_empty()) else {
+        return json!({"ok": false, "err": "research: need query"});
+    };
+    let limit = req.limit.unwrap_or(8).clamp(1, 30);
+    let url = format!(
+        "{}?q={}&format=json&language=en",
+        std::env::var("SENTRA_SEARX_URL").unwrap_or_else(|_| "http://127.0.0.1:8888/search".into()),
+        percent_encode(q)
+    );
+    let out = std::process::Command::new("curl")
+        .args(["-s", "-m", "20", &url])
+        .output()
+        .map_err(|e| e.to_string())
+        .and_then(|o| {
+            if o.status.success() {
+                Ok(o.stdout)
+            } else {
+                Err(format!("curl exit {}", o.status))
+            }
+        })
+        .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).map_err(|e| e.to_string()));
+    let body = match out {
+        Ok(v) => v,
+        Err(e) => return json!({"ok": false, "err": format!("agent -: searx: {e}")}),
+    };
+    let results: Vec<Value> = body
+        .get("results")
+        .and_then(Value::as_array)
+        .map(|rs| {
+            rs.iter()
+                .take(limit as usize)
+                .map(|r| {
+                    json!({
+                        "title": r.get("title").cloned().unwrap_or(Value::Null),
+                        "url": r.get("url").cloned().unwrap_or(Value::Null),
+                        "content": r.get("content").cloned().unwrap_or(Value::Null),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    json!({"ok": true, "results": results})
+}
+
+/// Minimal %-encoding for a searxng query string value.
+fn percent_encode(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(b as char)
+            }
+            _ => out.push_str(&format!("%{b:02X}")),
+        }
+    }
+    out
+}

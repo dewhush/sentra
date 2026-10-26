@@ -1,0 +1,19 @@
+name: config
+description: Presets / profiles / templates issue (presets.json, harness @mentions).
+labels: ["config"]
+body:
+  - type: textarea
+    id: config
+    attributes:
+      label: The config that fails
+      render: json
+      placeholder: '{ "hermes": ["hermes"] }'
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Behavior
+      description: What happens vs what you expect. Include `sentra presets` output if relevant.
+    validations:
+      required: true

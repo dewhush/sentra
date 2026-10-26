@@ -86,11 +86,17 @@ fn cmd(args: &[String]) -> Result<(), String> {
     let json = args.iter().any(|a| a == "--json");
     let verb = args
         .first()
-        .ok_or("usage: sentra <spawn|list|send|wait|read|resize|kill|presets> [args] [--json]")?;
+        .ok_or("usage: sentra <spawn|list|send|wait|read|resize|kill|presets|profiles|lessons|research> [args] [--json]")?;
     let rest: Vec<&String> = args[1..].iter().filter(|a| a.as_str() != "--json").collect();
 
     if verb == "presets" {
         return presets_cmd(json);
+    }
+    if verb == "profiles" {
+        return profiles_cmd(json);
+    }
+    if verb == "lessons" || verb == "research" {
+        return special(verb, &rest, json);
     }
 
     let req = match verb.as_str() {
@@ -205,7 +211,7 @@ fn build_spawn(rest: &[&String]) -> Result<Value, String> {
     let mut i = 0;
     while i < rest.len() {
         match rest[i].as_str() {
-            "--name" | "--cwd" | "--preset" => {
+            "--name" | "--cwd" | "--preset" | "--profile" => {
                 let key = &rest[i][2..];
                 let val = rest.get(i + 1).ok_or_else(|| format!("{} needs a value", rest[i]))?;
                 v[key] = json!(val);
@@ -221,8 +227,8 @@ fn build_spawn(rest: &[&String]) -> Result<Value, String> {
             other => return Err(format!("unexpected spawn arg `{other}`")),
         }
     }
-    if v.get("preset").is_none() && v.get("argv").is_none() {
-        return Err("usage: sentra spawn [--name N] [--cwd D] (--preset P | -- argv…)".into());
+    if v.get("preset").is_none() && v.get("argv").is_none() && v.get("profile").is_none() {
+        return Err("usage: sentra spawn [--name N] [--cwd D] (--preset P | --profile P | -- argv…)".into());
     }
     Ok(v)
 }
@@ -282,4 +288,82 @@ fn build_resize(rest: &[&String]) -> Result<Value, String> {
             .ok_or_else(|| format!("usage: sentra resize <id|name> --cols N --rows N ({flag} missing/invalid)"))
     };
     Ok(json!({"cmd":"resize","id":t,"cols":grab("--cols")?,"rows":grab("--rows")?}))
+}
+/// `lessons` and `research` — shape-mapping too custom for build_* helpers.
+fn special(verb: &str, rest: &[&String], json: bool) -> Result<(), String> {
+    let mut v = json!({"cmd": verb});
+    let flags: Vec<&String> = rest.iter().filter(|a| a.as_str().starts_with("--")).copied().collect();
+    match verb {
+        "lessons" => {
+            // sentra lessons <key> [text…] | --show | --clear
+            let positional: Vec<&String> = rest.iter().filter(|a| !a.as_str().starts_with("--")).copied().collect();
+            let key = positional.first().ok_or("usage: sentra lessons <key> [text…] | --clear")?;
+            v["key"] = json!(key);
+            let text: Vec<&String> = positional.iter().skip(1).copied().collect();
+            if flags.iter().any(|f| f.as_str() == "--clear") {
+                v["text"] = json!("-");
+            } else if !text.is_empty() {
+                let joined = text.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(" ");
+                v["text"] = json!(joined);
+            } // else: show
+        }
+        "research" => {
+            let positional: Vec<&String> = rest.iter().filter(|a| !a.as_str().starts_with("--")).copied().collect();
+            let q = positional.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(" ");
+            if q.is_empty() {
+                return Err("usage: sentra research \"query\" [--limit 8]".into());
+            }
+            v["query"] = json!(q);
+            if let Some(i) = flags.iter().position(|f| f.as_str() == "--limit")
+                && let Some(n) = flags.get(i + 1).and_then(|s| s.parse::<u32>().ok()) {
+                    v["limit"] = json!(n);
+                }
+        }
+        _ => unreachable!(),
+    }
+    // lessons --show friendly-prints the chunk; research friendly-prints results
+    let resp = request(&v)?;
+    if resp.get("ok").and_then(Value::as_bool) != Some(true) {
+        return Err(err_of(&resp));
+    }
+    if json {
+        println!("{resp}");
+        return Ok(());
+    }
+    match verb {
+        "lessons" => {
+            if let Some(c) = resp.get("chunk").and_then(Value::as_str) {
+                print!("{c}");
+            }
+        }
+        "research" => {
+            let mut n = 0;
+            for r in resp.get("results").and_then(Value::as_array).unwrap_or(&vec![]) {
+                n += 1;
+                println!("{} · {}\n  {}", r["title"].as_str().unwrap_or("?"), r["url"].as_str().unwrap_or(""), r["content"].as_str().unwrap_or("").chars().take(200).collect::<String>());
+            }
+            eprintln!("# {n} results (searxng)");
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+fn profiles_cmd(json: bool) -> Result<(), String> {
+    let resp = request(&json!({"cmd": "profiles"}))?;
+    if resp.get("ok").and_then(Value::as_bool) != Some(true) {
+        return Err(err_of(&resp));
+    }
+    if json {
+        println!("{}", resp.get("profiles").cloned().unwrap_or(json!({})));
+        return Ok(());
+    }
+    if let Some(Value::Object(m)) = resp.get("profiles") {
+        for (k, p) in m {
+            let preset = p.get("preset").and_then(Value::as_str).unwrap_or("?");
+            let role = p.get("role").and_then(Value::as_str).unwrap_or("");
+            println!("{k}: [{preset}] {role}");
+        }
+    }
+    Ok(())
 }

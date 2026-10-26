@@ -1,0 +1,9 @@
+Third-party components bundled in this repository:
+
+- crates/sentra-ui/dist/vendor/ — xterm.js and add-ons (xterm.js, addon-fit,
+  addon-canvas), MIT License, © xterm.js contributors. https://xtermjs.org
+- crates/sentra-ui/dist/fonts/ — Archivo, Inter (SIL Open Font License 1.1);
+  Geist Mono (SIL Open Font License 1.1, © Vercel); Instrument Serif
+  (SIL Open Font License 1.1, license text in InstrumentSerif-LICENSE.txt).
+
+All other code is MIT Licensed (see LICENSE).

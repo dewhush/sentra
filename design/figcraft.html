@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sentra — design mockup</title>
+<style>
+:root{
+  --r:13px;
+  --bg:#f2f1ee; --surface:#ffffff; --surface-2:#faf9f7;
+  --ink:#101014; --muted:#6b6b74; --hairline:#e3e1dc; --accent:#2d81ff;
+  --term-bg:#fdfcfb; --term-ink:#2a2a30;
+}
+html.dark{
+  --bg:#0e0e11; --surface:#16161b; --surface-2:#1d1d24;
+  --ink:#e8e8ec; --muted:#8a8a94; --hairline:#26262e;
+  --term-bg:#14141a; --term-ink:#c9c9d2;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  background:var(--bg); color:var(--ink);
+  font:14px/1.5 'Inter',system-ui,-apple-system,sans-serif;
+  padding:56px 32px 48px;
+  transition:background .2s,color .2s;
+}
+.display{font-family:'Archivo','Inter',system-ui,sans-serif}
+.mono{font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace}
+button,input,select,textarea,.chip,.pane,.card{border-radius:var(--r)}
+button,input,select,textarea{
+  font:inherit;color:inherit;background:var(--surface);
+  border:1px solid var(--hairline);
+}
+button{cursor:pointer}
+input,textarea{outline:none}
+input:focus,textarea:focus,select:focus{border-color:var(--accent)}
+
+#themeBtn{
+  position:fixed;top:16px;right:16px;z-index:50;
+  padding:7px 14px;font-size:12px;color:var(--muted);
+  background:var(--surface);
+}
+#themeBtn:hover{color:var(--ink)}
+
+/* launcher */
+.launcher{max-width:640px;margin:0 auto 56px}
+.kicker{
+  font-size:11px;letter-spacing:.22em;color:var(--accent);
+  font-weight:600;margin-bottom:14px;
+}
+.launcher h1{
+  font-size:clamp(34px,5vw,52px);font-weight:700;
+  letter-spacing:-.02em;line-height:1.08;margin-bottom:28px;
+}
+.atbar{
+  display:flex;align-items:center;gap:10px;
+  background:var(--surface);border:1px solid var(--hairline);
+  border-radius:var(--r);padding:14px 18px;
+  font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+  font-size:15px;
+}
+.atbar .at{color:var(--accent);font-weight:600}
+.atbar input{border:0;background:none;flex:1;font:inherit;color:var(--ink);padding:0}
+.chips{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+.chip{
+  padding:6px 13px;font-size:12px;font-family:ui-monospace,Menlo,monospace;
+  background:var(--surface);border:1px solid var(--hairline);
+  color:var(--muted);cursor:pointer;transition:color .15s,border-color .15s;
+}
+.chip:hover{color:var(--accent);border-color:var(--accent)}
+
+/* app shell */
+.shell{
+  display:grid;grid-template-columns:220px 1fr;gap:0;
+  max-width:1100px;margin:0 auto;
+  background:var(--surface);border:1px solid var(--hairline);
+  border-radius:var(--r);overflow:hidden;
+  height:620px;
+}
+.roster{
+  border-right:1px solid var(--hairline);
+  background:var(--surface-2);
+  padding:14px 10px;display:flex;flex-direction:column;gap:4px;
+}
+.roster h2{
+  font-size:10px;letter-spacing:.2em;color:var(--muted);
+  padding:4px 10px 12px;font-weight:600;
+}
+.agent{
+  display:flex;align-items:center;gap:10px;
+  padding:9px 10px;border-radius:var(--r);
+  font-family:ui-monospace,Menlo,monospace;font-size:13px;
+  cursor:default;
+}
+.agent:hover{background:var(--surface)}
+.agent.active{background:var(--surface);border:1px solid var(--hairline);padding:8px 9px}
+.dot{width:8px;height:8px;border-radius:50%;flex:none}
+.dot.live{background:#3ecf6f}
+.dot.idle{background:var(--muted);opacity:.5}
+.dot.busy{background:var(--accent)}
+.agent .argv{margin-left:auto;color:var(--muted);font-size:11px}
+
+.main{display:flex;flex-direction:column;min-width:0}
+.grid{
+  flex:1;display:grid;
+  grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;
+  gap:1px;background:var(--hairline);min-height:0;
+}
+.pane{
+  display:flex;flex-direction:column;min-height:0;
+  background:var(--bg);border-radius:0;overflow:hidden;
+}
+.pane > .titlebar{
+  display:flex;align-items:center;gap:9px;
+  padding:7px 13px;font-size:12px;flex:none;
+  background:var(--surface);
+  border-bottom:1px solid var(--hairline);
+  font-family:ui-monospace,Menlo,monospace;color:var(--muted);
+}
+.titlebar .name{color:var(--ink);font-weight:600}
+.titlebar .cmd{margin-left:auto;font-size:11px}
+.term{
+  flex:1;background:var(--term-bg);color:var(--term-ink);
+  padding:13px 15px;overflow:hidden;
+  font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+  font-size:12px;line-height:1.65;
+}
+.term .p{color:var(--accent)}
+.term .dim{color:var(--muted)}
+.term .ok{color:#3ecf6f}
+
+/* command bar */
+.cmdbar{
+  display:flex;align-items:center;gap:10px;
+  padding:11px 14px;flex:none;background:var(--surface);
+  border-top:1px solid var(--hairline);
+}
+.cmdbar .pr{color:var(--accent);font-weight:700;font-family:ui-monospace,monospace}
+.cmdbar input{flex:1;border:0;background:none;padding:6px 10px;font-family:ui-monospace,Menlo,monospace;font-size:13px;color:var(--ink)}
+.cmdbar input:focus{border:0}
+.cmdbar .chips{margin:0}
+.cmdbar .chip{padding:4px 10px;font-size:11px}
+
+/* handoff dialog */
+.dialog{
+  position:absolute;right:40px;bottom:40px;z-index:30;
+  width:340px;background:var(--surface);
+  border:1px solid var(--hairline);border-radius:var(--r);
+  box-shadow:0 18px 50px rgba(0,0,0,.22);
+  padding:20px;
+}
+.dialog h3{
+  font-size:11px;letter-spacing:.2em;color:var(--muted);
+  font-weight:600;margin-bottom:16px;
+}
+.dialog label{
+  display:block;font-size:11px;color:var(--muted);
+  margin:12px 0 5px;
+}
+.dialog select,.dialog textarea{
+  width:100%;padding:9px 12px;font-size:13px;
+  background:var(--surface-2);color:var(--ink);
+}
+.dialog textarea{height:74px;resize:none;font-family:ui-monospace,Menlo,monospace}
+.dialog .row{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
+.btn{padding:8px 18px;font-size:13px;font-weight:500}
+.btn.ghost{background:transparent;color:var(--muted)}
+.btn.primary{
+  background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600;
+}
+.btn.primary:hover{filter:brightness(1.08)}
+</style>
+</head>
+<body>
+<button id="themeBtn" onclick="document.documentElement.classList.toggle('dark')">◐ theme</button>
+
+<section class="launcher">
+  <div class="kicker display">AGENT CONSOLE</div>
+  <h1 class="display">many terminals,<br>one window</h1>
+  <div class="atbar"><span class="at">@</span><input value="@hermes handle ui @claude front end" spellcheck="false"></div>
+  <div class="chips">
+    <span class="chip">@hermes</span><span class="chip">@claude</span><span class="chip">@omp</span><span class="chip">@codex</span><span class="chip">@bash</span>
+  </div>
+</section>
+
+<section class="shell">
+  <aside class="roster">
+    <h2 class="display">ROSTER</h2>
+    <div class="agent active"><span class="dot live"></span>bash1<span class="argv">zsh</span></div>
+    <div class="agent"><span class="dot busy"></span>omp<span class="argv">plan</span></div>
+    <div class="agent"><span class="dot live"></span>codex<span class="argv">refactor</span></div>
+    <div class="agent"><span class="dot idle"></span>claude<span class="argv">idle</span></div>
+  </aside>
+
+  <div class="main">
+    <div class="grid">
+      <div class="pane">
+        <div class="titlebar"><span class="dot live"></span><span class="name">bash1</span><span class="cmd">cargo build --release</span></div>
+        <div class="term">
+<span class="p">$</span> cargo build --release<br>
+&nbsp;&nbsp;Compiling sentra-daemon v0.4.1<br>
+&nbsp;&nbsp;Compiling sentra-ui v0.4.1<br>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="ok">Finished</span> `release` in 14.2s<br>
+<span class="p">$</span> <span class="dim">_</span>
+        </div>
+      </div>
+      <div class="pane">
+        <div class="titlebar"><span class="dot busy"></span><span class="name">omp</span><span class="cmd">plan scaffold</span></div>
+        <div class="term">
+<span class="p">›</span> reading crates/sentra-ui/src<br>
+<span class="dim">·</span> found 12 components, 3 themes<br>
+<span class="dim">·</span> drafting refactor plan…<br>
+<span class="dim">·</span> 4 steps proposed, awaiting ok
+        </div>
+      </div>
+      <div class="pane">
+        <div class="titlebar"><span class="dot live"></span><span class="name">codex</span><span class="cmd">refactor pane.rs</span></div>
+        <div class="term">
+<span class="p">$</span> codex exec "refactor pane.rs"<br>
+<span class="dim">·</span> extracted Pane::draw() → 38 lines<br>
+<span class="dim">·</span> removed duplicated titlebar logic<br>
+<span class="ok">✓</span> 2 files changed, tests pass
+        </div>
+      </div>
+      <div class="pane">
+        <div class="titlebar"><span class="dot idle"></span><span class="name">claude</span><span class="cmd">—</span></div>
+        <div class="term">
+<span class="dim">waiting for handoff…</span><br>
+<span class="dim">last: styled roster sidebar, shipped</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="cmdbar">
+      <span class="pr">&gt;</span>
+      <input placeholder="send to agents…" spellcheck="false">
+      <div class="chips">
+        <span class="chip">all</span><span class="chip">@omp</span><span class="chip">@codex</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="dialog">
+  <h3 class="display">SEND TO…</h3>
+  <label>target</label>
+  <select><option>@omp</option><option>@codex</option><option>@claude</option><option>@hermes</option><option>@bash</option></select>
+  <label>message</label>
+  <textarea placeholder="take over the ui refactor pane.rs…"></textarea>
+  <div class="row">
+    <button class="btn ghost">Cancel</button>
+    <button class="btn primary">Send</button>
+  </div>
+</div>
+
+<script>
+// sanity: toggle applies class
+if(location.hash==='#dark')document.documentElement.classList.add('dark');
+console.assert(getComputedStyle(document.documentElement).getPropertyValue('--r').trim()==='13px','--r missing');
+</script>
+</body>
+</html>
