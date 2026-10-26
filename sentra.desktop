@@ -2,6 +2,7 @@
 Type=Application
 Name=Sentra
 Comment=Many AI-agent terminals, one window
+Icon=/home/dewhush/code/sentra/crates/sentra-ui/icons/icon-256.png
 Exec=sentra serve --with-ui
 Terminal=false
 Categories=Development;System;

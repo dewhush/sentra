@@ -33,15 +33,57 @@ function onLine(line) {
 
 async function main() {
   if (!window.__TAURI__) throw new Error("Tauri global missing — is the daemon running? start with: `sentra serve`");
-  const { invoke } = window.__TAURI__.core;
   const { listen } = window.__TAURI__.event;
   await listen("sentra-line", (e) => onLine(e.payload));
-  sock = await invoke("connect");
+  await window.__TAURI__.core.invoke("connect");
 
   // --- state ---
   const state = { agents: new Map(), focus: null, panes: new Map() };
-  // agents: id -> {id,name,argv,alive,exit_code}
-  // panes: id -> {el, term, fit}
+  // agents: id -> {id,name,argv,alive,exit_code} · panes: id -> {el, term, fit}
+
+  // ===== harness launcher =====
+  const harnessEl = document.getElementById('harness');
+  const appEl = document.getElementById('app');
+  const HUE = { hermes: 'h-red', claude: 'h-blue', omp: 'h-yellow', codex: 'h-pink' };
+  function parseHarness(s) {
+    // "@hermes handle ui  @claude front end" → [{preset:'hermes',task:'handle ui'},…]
+    const out = [];
+    const re = /@([A-Za-z0-9_-]+)((?:\s+(?!@[A-Za-z0-9_-]+)[^\s@][^@]*)?)/g;
+    for (const m of s.matchAll(re)) {
+      const preset = m[1].toLowerCase();
+      const task = (m[2] || '').trim();
+      if (preset) out.push({ preset, task });
+    }
+    return out;
+  }
+  async function launchHarness(specs) {
+    if (!specs.length) return;
+    harnessEl.hidden = true;
+    appEl.hidden = false;
+    const ids = [];
+    for (const sp of specs) {
+      const r = await spawnCmd(sp.preset);
+      if (r.ok) {
+        await openPane(r.id, sp.preset);
+        ids.push(r.id);
+        if (sp.task) {
+          await rpc({ cmd: 'send', id: String(r.id), text: sp.task, enter: true });
+        }
+      }
+    }
+    if (ids.length) focusPane(ids[0]);
+    refitAll();
+  }
+  document.getElementById('hform').addEventListener('submit', (e) => {
+    e.preventDefault();
+    launchHarness(parseHarness(document.getElementById('hinput').value));
+  });
+  for (const b of document.querySelectorAll('.h-chips button')) {
+    b.onclick = () => launchHarness([{ preset: b.dataset.p, task: '' }]);
+  }
+  const pendingHarness = sessionStorage.getItem('sentra-harness');
+  if (pendingHarness) { sessionStorage.removeItem('sentra-harness'); launchHarness(JSON.parse(pendingHarness)); }
+
 
   // --- roster ---
   const rosterRows = document.getElementById('roster-rows');
@@ -65,43 +107,38 @@ async function main() {
   const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
   // --- panes ---
-  const panesEl = document.getElementById('panes');
-  async function openPane(id) {
+  const gridEl = document.getElementById('grid');
+  async function openPane(id, preset) {
     if (state.panes.has(id)) return state.panes.get(id);
     const pane = document.createElement('div');
-    pane.className = 'pane';
-    pane.innerHTML = `<div class="ptitle"></div><div class="pdead"></div><div class="term"></div>`;
-    panesEl.appendChild(pane);
+    pane.className = 'gpane ' + (HUE[preset] || '');
+    const a = state.agents.get(id) || {};
+    pane.innerHTML = `<div class="gtitle"><span class="dot live"></span>` +
+      `<span class="gname">${esc(a.name || ('agent ' + id))}</span>` +
+      `<span class="gargv">${esc((a.argv || []).join(' '))}</span></div>` +
+      `<div class="gdead"></div><div class="gterm"></div>`;
+    gridEl.appendChild(pane);
     const term = new Terminal({ convertEol: false, cursorBlink: true, fontFamily: '"JetBrains Mono","Fira Code",monospace', fontSize: 12, theme: { background: '#101216', foreground: '#d6dde6', cursor: '#7aa2f7', selectionBackground: '#2a3447' } });
     const fit = new FitAddon();
     term.loadAddon(fit);
-    term.open(pane.querySelector('.term'));
-    const rec = { el: pane, term, fit, backfilled: false };
+    term.open(pane.querySelector('.gterm'));
+    const rec = { el: pane, term, fit };
     state.panes.set(id, rec);
     // backfill from daemon ring
     const r = await rpc({ cmd: 'read', id: String(id), tail: 65536 });
     if (r.ok && r.chunk) term.write(r.chunk);
-    rec.backfilled = true;
     term.onData((d) => rpc({ cmd: 'send', id: String(id), text: d, enter: false }));
     term.onResize(({ cols, rows }) => rpc({ cmd: 'resize', id: String(id), cols, rows }));
-    pane.querySelector('.ptitle').onclick = () => focusPane(id);
-    term.focus();
+    pane.querySelector('.gtitle').onclick = () => focusPane(id);
     refitAll();
     focusPane(id);
     return rec;
   }
 
-  function closePane(id, keepInRoster) {
-    const rec = state.panes.get(id);
-    if (rec) { rec.term.dispose(); rec.el.remove(); state.panes.delete(id); }
-    if (!keepInRoster) state.agents.delete(id);
-    renderRoster();
-    refitAll();
-}
 
   function refitAll() {
     const n = state.panes.size;
-    panesEl.className = n > 4 ? 'cols3' : n > 1 ? 'cols2' : 'cols1';
+    gridEl.className = n === 4 ? 'q4' : n > 2 ? 'c2' : n > 1 ? 'c2' : 'c1';
     for (const rec of state.panes.values()) { try { rec.fit.fit(); } catch {} }
     // refit again after layout settles
     requestAnimationFrame(() => { for (const rec of state.panes.values()) { try { rec.fit.fit(); } catch {} } });
@@ -161,7 +198,7 @@ async function main() {
     if (e.key === 'Enter') { spawnUi(e.target.value); }
   });
   // xterm keybindings
-  panesEl.addEventListener('keydown', (e) => {
+  gridEl.addEventListener('keydown', (e) => {
     if (e.key === 'Tab' && e.ctrlKey) { e.preventDefault(); cycleFocus(); }
   });
   window.addEventListener('keydown', (e) => {
@@ -207,7 +244,7 @@ async function main() {
       const a = state.agents.get(evt.id);
       if (a) { a.alive = false; a.exit_code = evt.code; }
       const rec = state.panes.get(evt.id);
-      if (rec) { rec.el.classList.add('dead'); rec.el.querySelector('.pdead').textContent = `agent ${evt.name ?? ''} exited (code ${evt.code})`; }
+      if (rec) { rec.el.classList.add('dead'); rec.el.querySelector('.gdead').textContent = `agent ${evt.name ?? ''} exited (code ${evt.code})`; }
       renderRoster();
       return;
     }
@@ -217,7 +254,8 @@ async function main() {
 
   // Rust pump already subscribed the watch conn to the global feed
   await refreshList();
-  // auto-open panes for existing agents (UI restart mid-flight)
+  if (state.agents.size) { harnessEl.hidden = true; appEl.hidden = false; }
+  // auto-open panes for existing agents (UI restart mid-flight); remembered preset hue via map
   for (const id of [...state.agents.keys()].sort((a, b) => a - b).slice(0, 12)) await openPane(id);
 
   // --- handoff dialog ---

@@ -1,33 +1,52 @@
 <!doctype html>
-<html>
-<head>
-  <link rel="stylesheet" href="vendor/xterm.css" />
-  <meta charset="utf-8" />
-  <title>Sentra</title>
-  <link rel="stylesheet" href="style.css" />
-</head>
+<html><head><meta charset="utf-8"><title>Sentra</title>
+<link rel="stylesheet" href="style.css"></head>
 <body>
-  <div id="app">
-    <aside id="roster"><div class="roster-title">SENTRA</div><div id="roster-rows"></div></aside>
-    <main id="panes"></main>
+<!-- harness launcher: initial view -->
+<div id="harness">
+  <header class="h-top">
+    <img src="icons/logo.svg" class="h-logo" alt="">
+    <div class="h-brand"><h1>Sentra</h1><p class="muted">many agent terminals, one window</p></div>
+  </header>
+  <form class="h-bar" id="hform">
+    <span class="h-at">@</span>
+    <input id="hinput" autocomplete="off" spellcheck="false"
+      placeholder="@hermes handle ui   @claude handle front end   @omp handle backend   @codex handle security">
+  </form>
+  <div class="h-chips">
+    <button type="button" data-p="hermes">@hermes</button>
+    <button type="button" data-p="claude">@claude</button>
+    <button type="button" data-p="omp">@omp</button>
+    <button type="button" data-p="codex">@codex</button>
+    <button type="button" data-p="bash">@bash</button>
   </div>
-  <footer id="bar">
-    <span id="prompt">&gt;</span>
-    <input id="cmd" autocomplete="off" placeholder="preset name or argv…" />
-    <div id="chips"></div>
-  </footer>
-  <div id="handoff" class="hidden">
-    <div class="ho-box">
-      <div class="ho-title">Send to…</div>
-      <select id="ho-target"></select>
-      <textarea id="ho-msg" placeholder="message for the agent…" rows="5"></textarea>
-      <div class="ho-actions">
-        <button id="ho-cancel">Cancel</button>
-        <button id="ho-send" class="primary">Send</button>
-      </div>
-      <div id="ho-status"></div>
+  <p class="muted h-hint">Enter = spawn setiap @agent ke terminalnya sendiri, grid 2×2.</p>
+</div>
+<!-- app: roster + quad grid + command bar -->
+<main id="app" hidden>
+  <aside id="roster">
+    <div class="roster-title">AGENTS</div>
+    <div id="roster-rows"></div>
+  </aside>
+  <section id="main">
+    <div id="grid"></div>
+    <form id="bar"><span id="prompt">&gt;</span><input id="cmd" autocomplete="off" spellcheck="false" placeholder="preset atau argv…">
+      <div id="chips"></div>
+    </form>
+  </section>
+</main>
+<!-- handoff dialog -->
+<div id="handoff" class="hidden">
+  <div class="ho-box">
+    <div class="ho-title">SEND TO…</div>
+    <select id="ho-target"></select>
+    <textarea id="ho-msg" rows="4"></textarea>
+    <div class="ho-actions">
+      <button type="button" id="ho-cancel">Cancel</button>
+      <button type="button" id="ho-send" class="primary">Send</button>
     </div>
+    <div id="ho-status"></div>
   </div>
-  <script type="module" src="app.js"></script>
-</body>
-</html>
+</div>
+<script type="module" src="app.js"></script>
+</body></html>
