@@ -1,4 +1,4 @@
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::sync::mpsc;
@@ -39,6 +39,145 @@ fn default_tail() -> u32 {
 }
 
 pub fn serve() -> Result<(), String> {
+    // optional TCP peer: SENTRA_TCP=host:port (e.g. 0.0.0.0:7621 or a tailscale IP).
+    // Same JSONL protocol + static web UI + SSE feed on the same port.
+    if let Ok(addr) = std::env::var("SENTRA_TCP") {
+        std::thread::Builder::new()
+            .name("tcp".into())
+            .spawn(move || {
+                if let Err(e) = serve_tcp(&addr) {
+                    eprintln!("sentra: tcp {addr}: {e}");
+                }
+            })
+            .map_err(|e| format!("spawn tcp thread: {e}"))?;
+    }
+    serve_unix()
+}
+
+fn serve_tcp(addr: &str) -> Result<(), String> {
+    use std::net::TcpListener;
+    let listener = TcpListener::bind(addr).map_err(|e| format!("bind {addr}: {e}"))?;
+    for stream in listener.incoming() {
+        match stream {
+            Ok(s) => {
+                let _ = s.set_nodelay(true);
+                let _ = std::thread::Builder::new().name("tcpconn".into()).spawn(move || {
+                    if let Err(e) = tcp_conn(s) {
+                        eprintln!("sentra: tcpconn: {e}");
+                    }
+                });
+            }
+            Err(e) => eprintln!("sentra: tcp accept: {e}"),
+        }
+    }
+    Ok(())
+}
+
+
+// ---------- mini HTTP: static web UI + /api (JSON POST proxy) + /events (SSE) ----------
+
+fn http_conn(mut s: std::net::TcpStream) -> Result<(), String> {
+    let mut r = BufReader::new(s.try_clone().map_err(|e| e.to_string())?);
+    let mut rl = String::new();
+    r.read_line(&mut rl).map_err(|e| e.to_string())?;
+    let mut parts = rl.split_whitespace();
+    let method = parts.next().unwrap_or("").to_string();
+    let path = parts.next().unwrap_or("/").to_string();
+    // headers (we only care about content-length)
+    let mut len = 0usize;
+    loop {
+        let mut h = String::new();
+        r.read_line(&mut h).map_err(|e| e.to_string())?;
+        let t = h.trim();
+        if t.is_empty() { break; }
+        if let Some(v) = t.to_ascii_lowercase().strip_prefix("content-length:") {
+            len = v.trim().parse().unwrap_or(0);
+        }
+    }
+    let path = path.split('?').next().unwrap_or("/").to_string();
+    match (method.as_str(), path.as_str()) {
+        ("GET", "/") | ("GET", "/index.html") => http_static(s, "index.html"),
+        ("GET", "/app.js") => http_static(s, "app.js"),
+        ("GET", "/style.css") => http_static(s, "style.css"),
+        ("GET", "/logo.svg") => http_static(s, "logo.svg"),
+        ("GET", "/xterm.js") => http_static(s, "vendor/xterm.js"),
+        ("GET", "/xterm.css") => http_static(s, "vendor/xterm.css"),
+        ("GET", "/addon-fit.js") => http_static(s, "vendor/addon-fit.js"),
+        ("GET", "/events") => sse_conn(s),
+        ("POST", "/api") => {
+            let mut body = vec![0u8; len];
+            r.read_exact(&mut body).map_err(|e| e.to_string())?;
+            let req: Req = serde_json::from_slice(&body)
+                .map_err(|e| format!("bad json: {e}"))?;
+            let resp = dispatch(&req);
+            let payload = resp.to_string();
+            let head = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: ";
+            let mut out = format!("{head}{}\r\n\r\n", payload.len());
+            out.push_str(&payload);
+            s.write_all(out.as_bytes()).map_err(|e| e.to_string())
+        }
+        _ => {
+            let b = "not found";
+            let out = format!("HTTP/1.1 404 Not Found\r\nContent-Length: {}\r\n\r\n{b}", b.len());
+            s.write_all(out.as_bytes()).map_err(|e| e.to_string())
+        }
+    }
+}
+
+fn web_dist() -> std::path::PathBuf {
+    std::env::var("SENTRA_WEB").map(Into::into).unwrap_or_else(|_| "crates/sentra-ui/dist".into())
+}
+
+fn http_static(mut s: std::net::TcpStream, rel: &str) -> Result<(), String> {
+    let p = web_dist().join(rel);
+    let body = std::fs::read(&p).map_err(|e| format!("read {p:?}: {e}"))?;
+    let ct = match p.extension().and_then(|e| e.to_str()) {
+        Some("html") => "text/html; charset=utf-8",
+        Some("js") => "application/javascript",
+        Some("css") => "text/css",
+        Some("svg") => "image/svg+xml",
+        Some("png") => "image/png",
+        _ => "application/octet-stream",
+    };
+    let head = format!(
+        "HTTP/1.1 200 OK\r\nContent-Type: {ct}\r\nContent-Length: {}\r\n\r\n",
+        body.len()
+    );
+    s.write_all(head.as_bytes()).and_then(|_| s.write_all(&body)).map_err(|e| e.to_string())
+}
+
+/// SSE: subscribe the global feed, stream events until the client disconnects.
+fn sse_conn(mut s: std::net::TcpStream) -> Result<(), String> {
+    use std::sync::mpsc;
+    s.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-cache\r\nAccess-Control-Allow-Origin: *\r\n\r\n").map_err(|e| e.to_string())?;
+    let (tx, rx) = mpsc::channel::<Value>();
+    {
+        let mut subs = registry::lock(&registry::GLOBAL_SUBS);
+        subs.push(tx);
+    }
+    let _ = s.write_all(b"data: {\"evt\":\"hello\"}\n\n");
+    for evt in rx {
+        if s.write_all(format!("data: {evt}\n\n").as_bytes()).is_err() {
+            break;
+        }
+    }
+    Ok(())
+}
+
+/// TCP comes from two kinds of clients: browsers (HTTP/SSE) and API clients
+/// (JSONL). Peek the first bytes to pick the handler.
+fn tcp_conn(s: std::net::TcpStream) -> Result<(), String> {
+    let mut peek = [0u8; 4];
+    let n = s.peek(&mut peek).map_err(|e| e.to_string())?;
+    let p = &peek[..n];
+    if p.starts_with(b"GET") || p.starts_with(b"POST") || p.starts_with(b"OPTI") || p.starts_with(b"HEAD") {
+        http_conn(s)
+    } else {
+        handle_conn(s)
+    }
+}
+
+fn serve_unix() -> Result<(), String> {
     let path = socket_path()?;
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).map_err(|e| format!("mkdir {dir:?}: {e}"))?;
@@ -82,12 +221,31 @@ fn socket_path() -> Result<std::path::PathBuf, String> {
     Ok(std::path::PathBuf::from(dir).join("sentra.sock"))
 }
 
-fn handle_conn(stream: UnixStream) -> Result<(), String> {
+
+/// Streams we can duplicate for the split reader/writer design.
+trait StreamClone {
+    fn try_clone(&self) -> std::io::Result<Self> where Self: Sized;
+}
+impl StreamClone for UnixStream {
+    fn try_clone(&self) -> std::io::Result<Self> {
+        UnixStream::try_clone(self)
+    }
+}
+impl StreamClone for std::net::TcpStream {
+    fn try_clone(&self) -> std::io::Result<Self> {
+        std::net::TcpStream::try_clone(self)
+    }
+}
+
+fn handle_conn<S>(stream: S) -> Result<(), String>
+where
+    S: Read + Write + StreamClone + Send + 'static,
+{
     // One connection multiplexes watch events and req/res RPC: a forwarder
     // thread streams watch events while the read loop keeps answering reqs.
+    let dup = stream.try_clone().map_err(|e| e.to_string())?;
     let shared = std::sync::Arc::new(std::sync::Mutex::new(stream));
-    let reader = shared.lock().map_err(|e| e.to_string())?.try_clone().map_err(|e| e.to_string())?;
-    let mut reader = BufReader::new(reader);
+    let mut reader = BufReader::new(dup);
     let mut line = String::new();
     loop {
         line.clear();
@@ -131,7 +289,7 @@ fn handle_conn(stream: UnixStream) -> Result<(), String> {
     }
 }
 
-fn write_resp(stream: &std::sync::Arc<std::sync::Mutex<UnixStream>>, v: &Value) -> Result<(), String> {
+fn write_resp<S: Write>(stream: &std::sync::Arc<std::sync::Mutex<S>>, v: &Value) -> Result<(), String> {
     let mut line = v.to_string();
     line.push('\n');
     let mut s = stream.lock().map_err(|e| e.to_string())?;
