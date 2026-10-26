@@ -5,10 +5,8 @@ set -euo pipefail
 HOST="${1:-vps}"
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 
-echo "==> rsync source"
-ssh "$HOST" 'mkdir -p ~/code/sentra'
-rsync -a --delete --exclude target --exclude node_modules "$REPO/" "$HOST:code/sentra/"
-
+echo "==> push source"
+tar -C "$REPO" --exclude target --exclude node_modules --exclude .git -cf - . | ssh "$HOST" 'mkdir -p ~/code/sentra && tar -C ~/code/sentra -xf -'
 echo "==> rust toolchain"
 if ! ssh "$HOST" 'command -v cargo >/dev/null'; then
   ssh "$HOST" 'curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal'
