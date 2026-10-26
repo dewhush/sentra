@@ -1,0 +1,109 @@
+:root {
+  --bg: #101216;
+  --bg2: #161a20;
+  --fg: #d6dde6;
+  --muted: #66707d;
+  --line: #242a33;
+  --acc: #7aa2f7;
+  --dead: #f7768e;
+  --ok: #9ece6a;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font: 13px/1.4 "Sarasa Mono K", "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+  overflow: hidden;
+}
+#app { display: flex; height: calc(100% - 44px); }
+
+/* roster */
+#roster {
+  width: 220px; min-width: 160px; background: var(--bg2);
+  border-right: 1px solid var(--line); display: flex; flex-direction: column;
+  user-select: none;
+}
+.roster-title {
+  padding: 12px 14px 8px; font-size: 11px; letter-spacing: 3px; color: var(--muted);
+}
+#roster-rows { overflow-y: auto; flex: 1; }
+.row {
+  display: flex; align-items: center; gap: 8px; padding: 7px 14px; cursor: pointer;
+  border-left: 2px solid transparent;
+}
+.row:hover { background: #1b2028; }
+.row.active { border-left-color: var(--acc); background: #1d232c; }
+.dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.dot.live { background: var(--ok); }
+.dot.dead { background: transparent; border: 1.5px solid var(--dead); }
+.row .rname { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row .rid { color: var(--muted); font-size: 11px; }
+.row .argv { color: var(--muted); font-size: 11px; max-width: 60px; overflow: hidden; text-overflow: ellipsis; }
+
+/* panes: equal re-flow grid, depth<=2, 2-col masonry feel */
+#panes { flex: 1; display: grid; gap: 6px; padding: 6px; grid-auto-rows: 1fr; }
+#panes.cols1 { grid-template-columns: 1fr; }
+#panes.cols2 { grid-template-columns: 1fr 1fr; }
+#panes.cols3 { grid-template-columns: 1fr 1fr 1fr; }
+.pane {
+  position: relative; display: flex; flex-direction: column; min-height: 0;
+  background: var(--bg); border: 1px solid var(--line); border-radius: 6px; overflow: hidden;
+}
+.pane.focused { border-color: var(--acc); box-shadow: 0 0 0 1px var(--acc); }
+.pane .ptitle {
+  display: flex; align-items: center; gap: 8px; padding: 4px 10px;
+  font-size: 11px; color: var(--muted); background: var(--bg2);
+  border-bottom: 1px solid var(--line); cursor: pointer; user-select: none;
+}
+.pane .ptitle .pname { color: var(--fg); }
+.pane .pdead {
+  padding: 2px 10px; font-size: 11px; color: #fff; background: var(--dead); display: none;
+}
+.pane.dead .pdead { display: block; }
+.pane .term { flex: 1; min-height: 0; padding: 4px 6px; }
+
+/* command bar */
+#bar {
+  height: 44px; display: flex; align-items: center; gap: 10px; padding: 0 12px;
+  background: var(--bg2); border-top: 1px solid var(--line);
+}
+#prompt { color: var(--acc); }
+#cmd {
+  flex: 1; background: transparent; border: none; outline: none; color: var(--fg);
+  font: inherit; padding: 6px 0;
+}
+#chips { display: flex; gap: 6px; }
+.chip {
+  padding: 4px 12px; border: 1px solid var(--line); border-radius: 999px;
+  font-size: 11px; color: var(--muted); cursor: pointer; user-select: none;
+}
+.chip:hover { color: var(--fg); border-color: var(--acc); }
+
+/* handoff dialog */
+#handoff {
+  position: fixed; inset: 0; background: rgba(0,0,0,.45);
+  display: flex; align-items: center; justify-content: center; z-index: 50;
+}
+#handoff.hidden { display: none; }
+.ho-box {
+  width: 480px; max-width: 90vw; background: var(--bg2); border: 1px solid var(--line);
+  border-radius: 8px; padding: 16px; display: flex; flex-direction: column; gap: 10px;
+  box-shadow: 0 12px 40px rgba(0,0,0,.5);
+}
+.ho-title { font-size: 12px; letter-spacing: 2px; color: var(--muted); }
+#ho-target, #ho-msg {
+  background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 6px;
+  padding: 8px 10px; font: inherit; outline: none; resize: vertical;
+}
+#ho-target:focus, #ho-msg:focus { border-color: var(--acc); }
+.ho-actions { display: flex; justify-content: flex-end; gap: 8px; }
+button {
+  background: transparent; color: var(--fg); border: 1px solid var(--line);
+  border-radius: 6px; padding: 6px 14px; font: inherit; cursor: pointer;
+}
+button:hover { border-color: var(--acc); }
+button.primary { background: var(--acc); color: #0b0e12; border-color: var(--acc); }
+#ho-status { font-size: 11px; color: var(--muted); min-height: 14px; }
+#ho-status.err { color: var(--dead); }
+#ho-status.done { color: var(--ok); }

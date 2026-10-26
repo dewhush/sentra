@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Sentra
+Comment=Many AI-agent terminals, one window
+Exec=sentra serve --with-ui
+Terminal=false
+Categories=Development;System;
+Keywords=agent;terminal;orchestrator;

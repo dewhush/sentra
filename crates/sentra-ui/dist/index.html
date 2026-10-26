@@ -1,0 +1,44 @@
+<!doctype html>
+<html>
+<head>
+  <link rel="stylesheet" href="vendor/xterm.css" />
+  <meta charset="utf-8" />
+  <title>Sentra</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="app">
+    <aside id="roster"><div class="roster-title">SENTRA</div><div id="roster-rows"></div></aside>
+    <main id="panes"></main>
+  </div>
+  <footer id="bar">
+    <span id="prompt">&gt;</span>
+    <input id="cmd" autocomplete="off" placeholder="preset name or argv…" />
+    <div id="chips"></div>
+  </footer>
+  <div id="handoff" class="hidden">
+    <div class="ho-box">
+      <div class="ho-title">Send to…</div>
+      <select id="ho-target"></select>
+      <textarea id="ho-msg" placeholder="message for the agent…" rows="5"></textarea>
+      <div class="ho-actions">
+        <button id="ho-cancel">Cancel</button>
+        <button id="ho-send" class="primary">Send</button>
+      </div>
+      <div id="ho-status"></div>
+    </div>
+  </div>
+  <script>document.body.style.background='#440000';window.__c=1;</script>
+<script type="module">
+try{ document.body.style.background='#004400';
+ const m=await import('./vendor/xterm.js'); const T=m.default?.Terminal??m.Terminal;
+ const d=document.createElement('div'); d.id='probe'; d.textContent='XT:'+(T?'T':'-')+'|'+Object.keys(m).slice(0,4).join(',');
+ d.style.cssText='position:fixed;top:0;left:340px;z-index:9999;color:#0f0;font:14px monospace;background:#000;padding:4px';
+ document.body.appendChild(d);
+}catch(e){ document.body.style.background='#440000'; const d=document.createElement('div'); d.textContent='ERR:'+String(e).slice(0,90); d.style.cssText='position:fixed;top:0;left:340px;z-index:9999;color:#f66;font:14px monospace;background:#000;padding:4px'; document.body.appendChild(d);}
+</script>
+<script type="module">import './vendor/xterm.js'; document.title='XTMOD-OK';</script>
+<script type="module">import './vendor/xterm-esm.js'; document.title='SHIM-OK';</script>
+<script type="module" src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,4 @@
+/target
+crates/sentra-ui/dist/vendor
+crates/sentra-ui/node_modules
+*.log
