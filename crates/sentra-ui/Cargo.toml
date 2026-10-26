@@ -12,6 +12,6 @@ path = "src/main.rs"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["devtools"] }
 serde_json.workspace = true
 sentra-cli = { path = "../sentra-cli" }

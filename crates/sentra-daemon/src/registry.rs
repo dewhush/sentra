@@ -29,6 +29,9 @@ pub struct Agent {
 use std::sync::atomic::AtomicBool;
 
 pub static REGISTRY: Mutex<Vec<Arc<Agent>>> = Mutex::new(Vec::new());
+/// Watchers subscribed to the global feed receive events for every agent,
+/// including ones spawned after they subscribed.
+pub static GLOBAL_SUBS: Mutex<Vec<Sender<serde_json::Value>>> = Mutex::new(Vec::new());
 
 pub fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|e| e.into_inner())
@@ -103,16 +106,16 @@ pub fn spawn(
 
 pub fn resolve(id_or_name: &str) -> Option<Arc<Agent>> {
     let reg = lock(&REGISTRY);
-    if let Ok(id) = id_or_name.parse::<u32>() {
-        if let Some(a) = reg.iter().find(|a| a.id == id) {
+    if let Ok(id) = id_or_name.parse::<u32>()
+        && let Some(a) = reg.iter().find(|a| a.id == id) {
             return Some(a.clone());
         }
-    }
     reg.iter().find(|a| a.name == id_or_name).cloned()
 }
 
 fn fanout(agent: &Agent, evt: serde_json::Value) {
     lock(&agent.subs).retain(|(_, tx)| tx.send(evt.clone()).is_ok());
+    lock(&GLOBAL_SUBS).retain(|tx| tx.send(evt.clone()).is_ok());
 }
 
 fn push_output(agent: &Agent, bytes: &[u8]) {

@@ -30,6 +30,8 @@ struct Req {
     exit: Option<bool>,
     timeout_ms: Option<u64>,
     global: Option<bool>,
+    #[serde(rename = "_req")]
+    req_id: Option<u64>,
 }
 
 fn default_tail() -> u32 {
@@ -81,9 +83,11 @@ fn socket_path() -> Result<std::path::PathBuf, String> {
 }
 
 fn handle_conn(stream: UnixStream) -> Result<(), String> {
-    let reader = stream.try_clone().map_err(|e| e.to_string())?;
+    // One connection multiplexes watch events and req/res RPC: a forwarder
+    // thread streams watch events while the read loop keeps answering reqs.
+    let shared = std::sync::Arc::new(std::sync::Mutex::new(stream));
+    let reader = shared.lock().map_err(|e| e.to_string())?.try_clone().map_err(|e| e.to_string())?;
     let mut reader = BufReader::new(reader);
-    let mut stream = stream;
     let mut line = String::new();
     loop {
         line.clear();
@@ -94,50 +98,50 @@ fn handle_conn(stream: UnixStream) -> Result<(), String> {
         let req: Req = match serde_json::from_str(line.trim()) {
             Ok(r) => r,
             Err(e) => {
-                write_resp(&mut stream, &json!({"ok": false, "err": format!("bad request: {e}")}))?;
+                write_resp(&shared, &json!({"ok": false, "err": format!("bad request: {e}")}))?;
                 continue;
             }
         };
-        if req.cmd == "watch" {
+        let mut resp = if req.cmd == "watch" {
             let (tx, rx) = mpsc::channel::<Value>();
             match subscribe(&req, tx) {
                 Ok(()) => {
-                    write_resp(&mut stream, &json!({"ok": true}))?;
-                    for evt in rx {
-                        if write_resp(&mut stream, &evt).is_err() {
-                            break; // client gone; Sender drop cleans up
+                    let ev = shared.clone();
+                    std::thread::spawn(move || {
+                        for evt in rx {
+                            if write_resp(&ev, &evt).is_err() {
+                                break; // client gone; Sender drop cleans up
+                            }
                         }
-                    }
-                    return Ok(());
+                    });
+                    json!({"ok": true})
                 }
-                Err(e) => {
-                    write_resp(&mut stream, &json!({"ok": false, "err": e}))?;
-                    continue;
-                }
+                Err(e) => json!({"ok": false, "err": e}),
             }
-        }
-        if req.cmd == "unwatch" {
+        } else if req.cmd == "unwatch" {
             unwatch(&req);
-            write_resp(&mut stream, &json!({"ok": true}))?;
-            return Ok(());
+            json!({"ok": true})
+        } else {
+            dispatch(&req)
+        };
+        if let Some(r) = req.req_id {
+            resp["_req"] = json!(r); // echo so the client can correlate
         }
-        let resp = dispatch(&req);
-        write_resp(&mut stream, &resp)?;
+        write_resp(&shared, &resp)?;
     }
 }
 
-fn write_resp(stream: &mut UnixStream, v: &Value) -> Result<(), String> {
+fn write_resp(stream: &std::sync::Arc<std::sync::Mutex<UnixStream>>, v: &Value) -> Result<(), String> {
     let mut line = v.to_string();
     line.push('\n');
-    stream.write_all(line.as_bytes()).map_err(|e| e.to_string())
+    let mut s = stream.lock().map_err(|e| e.to_string())?;
+    s.write_all(line.as_bytes()).map_err(|e| e.to_string())
 }
 
 fn subscribe(req: &Req, tx: mpsc::Sender<Value>) -> Result<(), String> {
     let global = req.global.unwrap_or(false);
     if global {
-        for a in registry::lock(&registry::REGISTRY).iter() {
-            crate::registry::lock(&a.subs).push((true, tx.clone()));
-        }
+        crate::registry::lock(&crate::registry::GLOBAL_SUBS).push(tx);
         return Ok(());
     }
     let a = req
@@ -306,11 +310,10 @@ fn wait(req: &Req) -> Value {
         if alive {
             if !want_exit {
                 let last = *crate::registry::lock(&a.last_output);
-                if let Some(t) = last {
-                    if t.elapsed() >= Duration::from_millis(idle_ms) {
+                if let Some(t) = last
+                    && t.elapsed() >= Duration::from_millis(idle_ms) {
                         return json!({"ok": true, "idle": true});
                     }
-                }
             }
         } else {
             return json!({"ok": true, "exited": true, "code": code});

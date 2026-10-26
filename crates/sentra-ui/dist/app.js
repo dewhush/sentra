@@ -1,19 +1,5 @@
-// Sentra UI — vanilla JS + xterm.js over the daemon JSONL socket, via Tauri `connect` IPC.
-// Socket proxy: Tauri command `connect` (rust). One long-lived conn for watch events + req/res RPC.
-import { Terminal } from './vendor/xterm-esm.js';
-document.title='BOOT';
-const __boot = async () => {
-  try {
-    const m = await import('./vendor/xterm.js');
-    const Term = m.default?.Terminal ?? m.Terminal;
-    document.title = 'XT:' + (Term?'ok':'no-Terminal') + '|' + Object.keys(m).slice(0,5).join(',');
-    if (!Term) return;
-    const f = await import('./vendor/addon-fit.js');
-    document.title = 'AF:' + Object.keys(f).slice(0,5).join(',');
-  } catch(e) { document.title = 'ERR:' + String(e).slice(0,100); }
-};
-__boot();
-
+import xg from './vendor/xterm-esm.js';
+const Terminal = xg.Terminal;
 const { FitAddon } = await import('./vendor/addon-fit-esm.js');
 
 const enc = new TextEncoder(), dec = new TextDecoder();
@@ -28,7 +14,7 @@ async function rpc(cmd_obj) {
   const line = JSON.stringify({ ...cmd_obj, _req: id });
   const p = new Promise((res, rej) => pending.set(id, { res, rej }));
   const { invoke } = window.__TAURI__.core;
-  await invoke("send_line", { conn: sock, line });
+  await invoke("send_line", { line });
   return p;
 }
 
@@ -46,7 +32,9 @@ function onLine(line) {
 }
 
 async function main() {
-  const { invoke, listen } = window.__TAURI__.core;
+  if (!window.__TAURI__) throw new Error("Tauri global missing — is the daemon running? start with: `sentra serve`");
+  const { invoke } = window.__TAURI__.core;
+  const { listen } = window.__TAURI__.event;
   await listen("sentra-line", (e) => onLine(e.payload));
   sock = await invoke("connect");
 
@@ -68,6 +56,7 @@ async function main() {
         `<span class="rid">#${a.id}</span>`;
       row.onclick = () => focusPane(a.id);
       row.oncontextmenu = (e) => { e.preventDefault(); openHandoff(a.id); };
+      row.onauxclick = (e) => { if (e.button === 2) { e.preventDefault(); openHandoff(a.id); } };
       rosterRows.appendChild(row);
     }
     if (!state.agents.size) rosterRows.innerHTML = '<div class="row" style="color:var(--muted)">no agents — spawn one below</div>';
@@ -84,7 +73,7 @@ async function main() {
     pane.innerHTML = `<div class="ptitle"></div><div class="pdead"></div><div class="term"></div>`;
     panesEl.appendChild(pane);
     const term = new Terminal({ convertEol: false, cursorBlink: true, fontFamily: '"JetBrains Mono","Fira Code",monospace', fontSize: 12, theme: { background: '#101216', foreground: '#d6dde6', cursor: '#7aa2f7', selectionBackground: '#2a3447' } });
-    const fit = new FitAddon.FitAddon();
+    const fit = new FitAddon();
     term.loadAddon(fit);
     term.open(pane.querySelector('.term'));
     const rec = { el: pane, term, fit, backfilled: false };
@@ -149,6 +138,18 @@ async function main() {
   }
 
   // spawn via command bar → daemon returns id → openPane(id)
+  // spawn: bare word = preset name, otherwise argv split on spaces
+  async function spawnCmd(argvOrPreset) {
+    const s = (argvOrPreset || '').trim();
+    if (!s) return { ok: false, err: 'empty' };
+    const body = /\s/.test(s)
+      ? { cmd: 'spawn', argv: s.split(/\s+/), enter: false }
+      : { cmd: 'spawn', preset: s };
+    const r = await rpc(body);
+    if (r.ok) await refreshList();
+    return r;
+  }
+
   async function spawnUi(argvOrPreset) {
     const r = await spawnCmd(argvOrPreset);
     if (r && r.ok) await openPane(r.id);
@@ -210,20 +211,77 @@ async function main() {
       renderRoster();
       return;
     }
-    if (evt.evt === 'spawned') { await refreshList(); await openPane(evt.id); }
+    if (evt.evt === 'spawned') { await refreshList(); await openPane(evt.id); return; }
   };
+  window.__sentra = { killFocused, spawnUi, focusPane, state, hoMsg: (t) => { document.getElementById('ho-msg').value = t; }, hoTarget: (id) => { document.getElementById('ho-target').value = String(id); } };
 
-  const procs = { killFocused, spawnUi, focusPane, state };
-  window.__sentra = procs;
-
-  await invoke("start_watch"); // daemon global feed → sentra-line events
+  // Rust pump already subscribed the watch conn to the global feed
   await refreshList();
   // auto-open panes for existing agents (UI restart mid-flight)
   for (const id of [...state.agents.keys()].sort((a, b) => a - b).slice(0, 12)) await openPane(id);
-}
 
-let lastOut = new Map();
-function markOutput(id) { lastOut.set(id, Date.now()); }
+  // --- handoff dialog ---
+  let hoSrc = null, hoBusy = false;
+  function openHandoff(srcId) {
+    hoSrc = srcId;
+    const sel = document.getElementById('ho-target');
+    const st = document.getElementById('ho-status');
+    st.textContent = '';
+    sel.innerHTML = '';
+    const targets = [...state.agents.values()].filter((a) => a.id !== srcId && a.alive);
+    for (const t of targets) {
+      const o = document.createElement('option');
+      o.value = t.id; o.textContent = `#${t.id} ${t.name}`;
+      sel.appendChild(o);
+    }
+    if (!targets.length) { st.textContent = 'no other live agent to send to'; return; }
+    document.getElementById('ho-msg').value = 'echo HANDOFF_PROOF_$((9*9))';
+    document.getElementById('handoff').classList.remove('hidden');
+    document.getElementById('ho-msg').focus();
+  }
+  function closeHandoff() { document.getElementById('handoff').classList.add('hidden'); document.getElementById('ho-status').textContent = ''; }
+  async function sendHandoff() {
+    if (hoBusy) return;
+    const dst = Number(document.getElementById('ho-target').value);
+    const msg = document.getElementById('ho-msg').value;
+    if (!dst || !msg.trim()) return;
+    hoBusy = true;
+    const st = document.getElementById('ho-status');
+    st.textContent = 'sending…';
+    document.getElementById('ho-send').disabled = true;
+    let ok = false;
+    try {
+      const r = await rpc({ cmd: 'send', id: String(dst), text: msg, enter: true });
+      if (!r.ok) throw new Error(r.err || 'send failed');
+      st.textContent = 'sent — waiting for idle…';
+      const w = await rpc({ cmd: 'wait', id: String(dst), idle_ms: 4000 });
+      if (!w.ok) throw new Error(w.err || 'wait failed');
+      ok = true;
+      st.textContent = 'done — idled';
+    } catch (ex) { st.textContent = 'error: ' + String(ex.message || ex); }
+    const btn = document.getElementById('ho-send');
+    btn.disabled = false; hoBusy = false;
+    if (ok) {
+      btn.textContent = 'copy last output';
+      btn.onclick = async () => {
+        const rr = await rpc({ cmd: 'read', id: String(dst), tail: 8192 });
+        const txt = (rr.ok && rr.chunk) ? rr.chunk.trimEnd().split('\n').pop() : '(no output)';
+        st.textContent = '> ' + txt;
+        try { await navigator.clipboard.writeText(txt); st.textContent += ' — copied'; }
+        catch { st.textContent += ' — clipboard blocked; output shown above'; }
+      };
+    }
+  }
+  document.getElementById('ho-cancel').onclick = closeHandoff;
+  document.getElementById('ho-send').onclick = sendHandoff;
+  window.addEventListener('keydown', (e) => {
+    if (!document.getElementById('handoff').classList.contains('hidden')) {
+      if (e.key === 'Escape') closeHandoff();
+      if (e.ctrlKey && e.shiftKey && e.key === 'Enter') { e.preventDefault(); sendHandoff(); }
+    }
+  });
+  window.__sentra.sendHandoff = sendHandoff;
+}
 
 main().catch((e) => {
   document.body.innerHTML = `<div style="padding:24px;color:#f7768e;font-family:monospace">sentra-ui: ${String(e)}<br>is the daemon running? start with: <code>sentra serve</code></div>`;

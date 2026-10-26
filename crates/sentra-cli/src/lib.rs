@@ -5,11 +5,10 @@ use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 
 pub fn socket_path() -> PathBuf {
-    if let Ok(p) = std::env::var("SENTRA_SOCKET") {
-        if !p.is_empty() {
+    if let Ok(p) = std::env::var("SENTRA_SOCKET")
+        && !p.is_empty() {
             return PathBuf::from(p);
         }
-    }
     let dir = match std::env::var("XDG_RUNTIME_DIR") {
         Ok(d) if !d.is_empty() => PathBuf::from(d).join("sentra"),
         _ => PathBuf::from(format!("/tmp/sentra-{}", { unsafe { libc::getuid() } })),
@@ -178,15 +177,14 @@ pub fn presets() -> Map<String, Value> {
     let path = std::env::var("HOME")
         .map(|h| PathBuf::from(h).join(".config/sentra/presets.json"))
         .unwrap_or_default();
-    if let Ok(txt) = std::fs::read_to_string(path) {
-        if let Ok(Value::Object(user)) = serde_json::from_str::<Value>(&txt) {
+    if let Ok(txt) = std::fs::read_to_string(path)
+        && let Ok(Value::Object(user)) = serde_json::from_str::<Value>(&txt) {
             for (k, v) in user {
                 if v.is_array() {
                     m.insert(k, v);
                 }
             }
         }
-    }
     m
 }
 
