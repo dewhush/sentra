@@ -28,7 +28,7 @@ untrusted prompts.
 
 ## Reporting a vulnerability
 
-Email **dewhush@proton.me** or open a GitHub security advisory
+Email **dewantorokuntow@gmail.com** or open a GitHub security advisory
 (“Report a vulnerability” on the Security tab). Include reproduction steps and
 impact. Please do not open a public issue.
 

@@ -82,3 +82,8 @@ hard cuts, smoke suite must stay green.
 ## License
 
 [MIT](LICENSE)
+
+## Contact
+
+Questions or feedback: **dewantorokuntow@gmail.com** or open an
+[issue](https://github.com/dewhush/sentra/issues).

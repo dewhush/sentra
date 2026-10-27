@@ -50,7 +50,8 @@ cargo clippy             # must be clean
 
 Open an issue with: your distro, `sentra` version (commit hash), what you ran,
 what you expected, what happened. For agent crashes: the daemon survives; paste
-the daemon stderr, not a screenshot of a dead pane.
+the daemon stderr, not a screenshot of a dead pane. Questions:
+**dewantorokuntow@gmail.com**.
 
 ## License
 
