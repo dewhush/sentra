@@ -158,6 +158,9 @@ kbd {
   color: var(--text2); border: 1px solid var(--line); border-radius: 8px;
   padding: 7px 12px; background: var(--panel);
 }
+/* #17 WCAG 2.5.8: interactive targets ≥24px */
+.tb-btn, #thmbtn { min-height: 24px; }
+button { min-height: 24px; }
 .tb-btn:hover, #thmbtn:hover { border-color: var(--acc); color: var(--acc); background: var(--acc-soft); }
 .tb-btn.primary {
   background: var(--ink); color: var(--page); border-color: var(--ink);

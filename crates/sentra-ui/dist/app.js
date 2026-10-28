@@ -158,7 +158,8 @@ async function main() {
   function agentRow(a) {
     const row = document.createElement('div');
     row.className = 'row' + (state.focus === a.id ? ' active' : '');
-    row.innerHTML = `<span class="dot ${a.alive ? 'live' : 'dead'}"></span>` +
+    const stTxt = a.alive ? 'LIVE' : (a.exit_code != null ? `EXITED ${a.exit_code}` : 'EXITED');
+    row.innerHTML = `<span class="dot ${a.alive ? 'live' : 'dead'}" role="img" aria-label="${stTxt}" title="${stTxt}"></span>` +
       PICON(a.name) +
       `<span class="rname">${esc(a.name)}</span>` +
       (a.role ? `<span class="role">${esc(a.role)}</span>` : '') +
@@ -321,8 +322,40 @@ async function main() {
     return r;
   }
   window.spawnUi = spawnUi; // dev helper
-  // wire command bar
-  $('bar').addEventListener('submit', (e) => { e.preventDefault(); spawnUi($('cmd').value); $('cmd').value = ''; });
+  // wire command bar — #28: ↑/↓ history + @preset autocomplete
+  const cmdHist = { list: JSON.parse(localStorage.getItem('sentra-cmdhist') || '[]'), i: -1 };
+  $('cmd').addEventListener('keydown', (e) => {
+    const v = $('cmd').value;
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (cmdHist.list.length) {
+        cmdHist.i = cmdHist.i < 0 ? cmdHist.list.length - 1 : Math.max(0, cmdHist.i - 1);
+        $('cmd').value = cmdHist.list[cmdHist.i];
+      }
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (cmdHist.i >= 0) {
+        cmdHist.i++;
+        $('cmd').value = cmdHist.i >= cmdHist.list.length ? '' : cmdHist.list[cmdHist.i];
+        if (cmdHist.i >= cmdHist.list.length) cmdHist.i = -1;
+      }
+    } else if (e.key === 'Tab' && v.startsWith('@')) {
+      e.preventDefault();
+      const m = presets.find((p) => ('@' + p).startsWith(v));
+      if (m) $('cmd').value = '@' + m;
+    }
+  });
+  $('bar').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const val = $('cmd').value.trim();
+    if (val) {
+      cmdHist.list = [...cmdHist.list.filter((x) => x !== val), val].slice(-50);
+      localStorage.setItem('sentra-cmdhist', JSON.stringify(cmdHist.list));
+      cmdHist.i = -1;
+    }
+    spawnUi(val);
+    $('cmd').value = '';
+  });
 
   window.addEventListener('keydown', (e) => {
     if (e.ctrlKey && e.shiftKey && e.key === 'W') { killFocused(); }
