@@ -1,10 +1,10 @@
 /* Sentra - ArtCraft light editorial theme · v2 mock
  ink #101014 · warm paper #f2f1ee · electric blue #2d81ff
  Archivo (display) · Inter (UI) · Geist Mono (labels/terminals) */
-@font-face { font-family: 'Archivo'; src: url('fonts/archivo.woff2') format('woff2'); font-weight: 100 900; font-display: swap; }
-@font-face { font-family: 'Inter'; src: url('fonts/inter.woff2') format('woff2'); font-weight: 100 900; font-display: swap; }
-@font-face { font-family: 'Geist Mono'; src: url('fonts/geistmono.woff2') format('woff2'); font-weight: 100 900; font-display: swap; }
-@font-face { font-family: 'Instrument Serif'; src: url('fonts/instrumentserif.woff2') format('woff2'); font-weight: 400; font-style: italic; font-display: swap; }
+@font-face { font-family: 'Archivo'; src: url('fonts/Archivo.woff2') format('woff2'); font-weight: 100 900; font-display: swap; }
+@font-face { font-family: 'Inter'; src: url('fonts/Inter.woff2') format('woff2'); font-weight: 100 900; font-display: swap; }
+@font-face { font-family: 'Geist Mono'; src: url('fonts/GeistMono.woff2') format('woff2'); font-weight: 100 900; font-display: swap; }
+@font-face { font-family: 'Instrument Serif'; src: url('fonts/InstrumentSerif-Italic.woff2') format('woff2'); font-weight: 400; font-style: italic; font-display: swap; }
 
 :root {
  --ink: #101014;
