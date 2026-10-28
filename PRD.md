@@ -31,11 +31,15 @@ A **headless daemon owns every agent PTY**. A thin client (CLI) and a viewer (Ta
 - G4: UI restart must be invisible to agents (agents survive; history survives).
 - G5: Daemon idle RAM ≤ 30 MB @ 5 bash agents; total app ≤ 180 MB with UI.
 - G6: Zero-config SaniOS install: clone → `cargo build --release` → run.
+- G7: Four built-in themes (light, dark, cyberpunk, sepia) plus a
+  reduced-motion switch. Chrome and terminal palette only — no theme plugin
+  API, no per-agent skins.
 
 **Non-goals (REJECTED — final for v1; see §12 for deferred banner list):**
 mobile, remote/SSH runtimes, relays, git worktrees, embedded browser, GitHub/
 Linear/GitLab integration, skills marketplace, kanban, team features, accounts,
-telemetry, auto-update, plugins, themes, Windows/macOS builds, docker.
+telemetry, auto-update, plugins, theme plugins/marketplaces, Windows/macOS
+builds, docker.
 
 ## 5. Personas
 
@@ -51,7 +55,7 @@ telemetry, auto-update, plugins, themes, Windows/macOS builds, docker.
 | S1 | As Dew I open one window and see all my agents at a glance | Roster shows every live agent (status dot, name, argv, id) without scrolling; roster updates within 500 ms of spawn/exit |
 | S2 | As Dew I spawn a preset agent in one action | Command bar `omp` + Enter, or preset chip click, or `sentra spawn --preset omp` → new PTY running that agent in ≤ 500 ms |
 | S3 | As Dew I split the view to compare two agents working | Split focus, both panes render TUI apps (htop, claude code spinner) without artifacts; resize keeps them aligned |
-| S4 | As Dew I hand a task from agent A to agent B | Select A → hangoff dialog → pick B → message. B's TTY receives the text; UI offers "copy B's last output" once B goes idle |
+| S4 | As Dew I hand a task from agent A to agent B | Select A → handoff dialog → pick B → message. B's TTY receives the text; UI offers "copy B's last output" once B's PTY is quiet after answering (not a claim that the task is done) |
 | S5 | As a script I orchestrate two agents unattended | `send → wait --idle-ms 5000 → read --tail 4000` roundtrip against two headless echo-agents exits 0 with expected bytes |
 | S6 | As Dew I close my laptop lid / UI crashes | Daemon keeps running; reopening UI shows same agents, same scrollback (last 256 KiB per pane) |
 | S7 | As Dew I kill an agent | Only that agent dies; banner "agent exited (code N)" on its pane; roster dot turns hollow |
@@ -62,13 +66,16 @@ telemetry, auto-update, plugins, themes, Windows/macOS builds, docker.
 
 ### F1 — Daemon (`sentra serve`) [P0, M1]
 - Owns N PTYs (portable-pty). Spawn/lifecycle per §8 data model.
-- Unix-socket JSON-Lines API: `spawn, list, watch, unwatch, send, wait, read, resize, kill`.
+- Unix-socket JSON-Lines API: `spawn, list, watch, unwatch, send, wait, read, resize, kill, forget`.
+- `wait` returns idle only when the newest PTY output is newer than the newest
+  input; input written and followed by silence is not idle. `forget` prunes a
+  dead registry record and refuses live agents.
 - Ring buffer 256 KiB per agent; `last_output` timestamp; alive/exited states.
 - Stale socket handling, sane errors (`{"ok":false,"err":"agent 12 not found"}`).
 - Affects: G4, S6, S7, S9.
 
 ### F2 — CLI (`sentra <verb>`) [P0, M2]
-- Verbs: `spawn|list|send|wait|read|resize|kill|presets` (+`serve`).
+- Verbs: `spawn|list|send|wait|read|resize|kill|forget|presets` (+`serve`).
 - Name-or-id resolution, `--json` on all, exit codes 0/1, stream-safe for pipes.
 - Presets file `~/.config/sentra/presets.json` overrides bundled defaults.
 - Affects: G2, G3, S5, S8.
@@ -128,7 +135,10 @@ unset — create 0700). Env override `SENTRA_SOCKET`.
 └────────────────────────────────────────────────────────┘
 ```
 - Focus ring on the active pane; dead agents' panes get a red "exited (code N)" strip.
-- Command-bar grammar: first token = preset name (known chip) else raw argv; `Enter` spawns into focused pane or a new pane if focused pane is a live TUI agent… (rule: never type into a live agent's stdin from the bar — spawn a new pane instead).
+- Command-bar grammar: `@name task` dispatches to live agents with that name,
+  or spawns the preset/profile and sends the task. A bare known name spawns
+  that preset; anything else is raw argv and spawns a new PTY. The button reads
+  `DISPATCH REPO ▸` only when every handle is live and a task is present.
 
 ## 10. Performance requirements
 

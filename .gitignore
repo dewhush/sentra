@@ -1,3 +1,7 @@
 /target
 crates/sentra-ui/node_modules
 *.log
+prd.md
+prompt.md
+audit-evidence.md
+audit-framework.md
