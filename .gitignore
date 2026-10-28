@@ -1,7 +1,12 @@
 /target
 crates/sentra-ui/node_modules
 *.log
+
+# Internal prompts, personal specifications & audit docs
+PRD.md
 prd.md
+PROMPT.md
 prompt.md
-audit-evidence.md
-audit-framework.md
+AUDIT*.md
+audit*.md
+docs/PLAN.md
