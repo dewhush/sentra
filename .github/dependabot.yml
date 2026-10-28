@@ -1,0 +1,26 @@
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      cargo-patch-minor:
+        update-types:
+          - minor
+          - patch
+
+  # github-actions only besides cargo. crates/sentra-ui/package.json exists (it
+  # pins the vendored @xterm versions) but nothing installs from it — the JS is
+  # committed into dist/vendor/ — so an npm bump would never reach the bundle.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      actions-patch-minor:
+        update-types:
+          - minor
+          - patch

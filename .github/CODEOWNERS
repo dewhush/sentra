@@ -1,0 +1,13 @@
+# Default owners for everything in the repo.
+*                       @dewhush
+
+# Sensitive: the daemon owns the unix-socket wire protocol, PTY spawning and
+# the per-agent registry. A change here is a security-relevant change.
+/crates/sentra-daemon/   @dewhush
+
+# Sensitive: checked-in frontend bundle served verbatim by the Tauri webview
+# (tauri.conf.json -> frontendDist "dist"). Not built by cargo; review by hand.
+/crates/sentra-ui/dist/  @dewhush
+
+# CI itself — a change here can weaken every gate at once.
+/.github/workflows/      @dewhush

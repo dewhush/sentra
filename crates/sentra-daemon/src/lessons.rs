@@ -16,7 +16,13 @@ fn path_for(key: &str) -> Option<PathBuf> {
     // trust boundary: key comes from the wire; keep it a plain filename
     let safe: String = key
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
     if safe.is_empty() {
         return None;
@@ -125,7 +131,11 @@ fn chrono_stamp() -> String {
         .args(["-u", "+%Y-%m-%dT%H:%M:%SZ"])
         .output()
         .ok()
-        .and_then(|o| String::from_utf8(o.stdout).ok().map(|s| s.trim().to_string()))
+        .and_then(|o| {
+            String::from_utf8(o.stdout)
+                .ok()
+                .map(|s| s.trim().to_string())
+        })
         .unwrap_or_default()
 }
 

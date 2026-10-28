@@ -4,9 +4,9 @@
 
 | Version | Supported |
 | ------- | --------- |
-| main    | yes       |
+| master  | yes       |
 
-Sentra is young; only `main` receives fixes.
+Sentra is young; only `master` receives fixes.
 
 ## Scope
 

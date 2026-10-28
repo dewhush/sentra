@@ -1,28 +1,75 @@
 name: CI
+
 on:
   push:
     branches: [master]
   pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
+  # Fast gate: no system deps, no linking, no webkit. Fails a PR in ~1 min.
+  # sentra-ui is excluded from clippy here — it links webkit2gtk/gtk and cannot
+  # even build without the apt packages, which is why the full-workspace clippy
+  # run lives in the `build` job instead.
+  lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: rustfmt (whole workspace)
+        run: cargo fmt --all -- --check
+      - name: Clippy (daemon + cli, all targets, clean)
+        run: cargo clippy -p sentra-daemon -p sentra-cli --all-targets -- -D warnings
+      # crates/sentra-ui/dist is a checked-in bundle (tauri.conf.json →
+      # frontendDist "dist") loaded verbatim at runtime and not built by cargo,
+      # so nothing else in CI would notice it being emptied or deleted.
+      - name: Frontend bundle present and non-empty
+        run: |
+          set -euo pipefail
+          test -s crates/sentra-ui/dist/index.html
+          test -s crates/sentra-ui/dist/app.js
+          test -s crates/sentra-ui/dist/style.css
+          grep -q 'id="app"' crates/sentra-ui/dist/index.html
+          echo "dist guard OK"
+
+  build:
+    needs: lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
+      - uses: Swatinem/rust-cache@v2
       - name: Install system deps (webkit2gtk for sentra-ui)
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev patchelf
       - name: Build (workspace, zero warnings)
         run: cargo build --release 2>&1 | tee /tmp/build.log && ! grep -E "^warning" /tmp/build.log
-      - name: Clippy (clean)
-        run: cargo clippy -- -D warnings
+      - name: Clippy (workspace, clean)
+        run: cargo clippy --all-targets -- -D warnings
+      # The workspace currently has 2 unit tests, both in
+      # crates/sentra-daemon/src/lessons.rs (#[cfg(test)] mod tests). The step
+      # stays so a newly added test is never silently ungated.
+      - name: Test (workspace)
+        run: cargo test --workspace
       - name: Smoke suite
         run: bash scripts/smoke.sh
         env:

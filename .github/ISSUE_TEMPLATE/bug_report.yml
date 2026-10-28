@@ -12,7 +12,7 @@ body:
     attributes:
       label: What happened?
       description: Expected vs actual. Include the exact `sentra …` command or UI action.
-      placeholder: sentra spawn --preset omp → {"ok":false,"err":"spawn: …"}
+      placeholder: 'sentra spawn --preset omp → {"ok":false,"err":"spawn: …"}'
     validations:
       required: true
   - type: textarea
@@ -47,3 +47,14 @@ body:
       options:
         - label: bash scripts/smoke.sh exits 0 on my machine
         - label: I checked this isn't one of the hard cuts (mobile, relay, worktrees, …)
+  - type: textarea
+    id: logs
+    attributes:
+      label: Daemon stderr
+      description: Paste the daemon stderr. Plain output survives a dead pane; a screenshot does not.
+      render: shell
+      placeholder: |
+        sentra: tcp accept: Connection reset by peer
+        sentra: spawn: preset "omp" not found in presets.json
+    validations:
+      required: false

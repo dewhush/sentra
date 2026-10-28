@@ -5,7 +5,7 @@ use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::presets::presets;
 use crate::registry::{self, Agent};
@@ -64,11 +64,13 @@ pub fn serve() -> Result<(), String> {
                         match stream {
                             Ok(s) => {
                                 let _ = s.set_nodelay(true);
-                                let _ = std::thread::Builder::new().name("tcpconn".into()).spawn(move || {
-                                    if let Err(e) = tcp_conn(s) {
-                                        eprintln!("sentra: tcpconn: {e}");
-                                    }
-                                });
+                                let _ = std::thread::Builder::new().name("tcpconn".into()).spawn(
+                                    move || {
+                                        if let Err(e) = tcp_conn(s) {
+                                            eprintln!("sentra: tcpconn: {e}");
+                                        }
+                                    },
+                                );
                             }
                             Err(e) => eprintln!("sentra: tcp accept: {e}"),
                         }
@@ -81,7 +83,9 @@ pub fn serve() -> Result<(), String> {
             // one daemon per web port: a second launch must not fall through to
             // "unix socket only" and hijack the socket from the running daemon
             eprintln!("sentra: tcp {tcp_addr}: {e} (another daemon is already running)");
-            return Err(format!("tcp {tcp_addr} in use — sentra daemon already running"));
+            return Err(format!(
+                "tcp {tcp_addr} in use — sentra daemon already running"
+            ));
         }
     };
 
@@ -93,7 +97,6 @@ pub fn serve() -> Result<(), String> {
     }
     serve_unix()
 }
-
 
 // ---------- mini HTTP: static web UI + /api (JSON POST proxy) + /events (SSE) ----------
 
@@ -110,7 +113,9 @@ fn http_conn(mut s: std::net::TcpStream) -> Result<(), String> {
         let mut h = String::new();
         r.read_line(&mut h).map_err(|e| e.to_string())?;
         let t = h.trim();
-        if t.is_empty() { break; }
+        if t.is_empty() {
+            break;
+        }
         if let Some(v) = t.to_ascii_lowercase().strip_prefix("content-length:") {
             len = v.trim().parse().unwrap_or(0);
         }
@@ -133,8 +138,7 @@ fn http_conn(mut s: std::net::TcpStream) -> Result<(), String> {
         ("POST", "/api") => {
             let mut body = vec![0u8; len];
             r.read_exact(&mut body).map_err(|e| e.to_string())?;
-            let req: Req = serde_json::from_slice(&body)
-                .map_err(|e| format!("bad json: {e}"))?;
+            let req: Req = serde_json::from_slice(&body).map_err(|e| format!("bad json: {e}"))?;
             let resp = dispatch(&req);
             let payload = resp.to_string();
             let head = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: ";
@@ -144,7 +148,10 @@ fn http_conn(mut s: std::net::TcpStream) -> Result<(), String> {
         }
         _ => {
             let b = "not found";
-            let out = format!("HTTP/1.1 404 Not Found\r\nContent-Length: {}\r\n\r\n{b}", b.len());
+            let out = format!(
+                "HTTP/1.1 404 Not Found\r\nContent-Length: {}\r\n\r\n{b}",
+                b.len()
+            );
             s.write_all(out.as_bytes()).map_err(|e| e.to_string())
         }
     }
@@ -162,10 +169,19 @@ fn web_dist() -> std::path::PathBuf {
     }
     std::env::current_exe()
         .ok()
-        .and_then(|p| p.parent().and_then(|d| d.parent()).map(|d| d.join("share/sentra/dist")))
+        .and_then(|p| {
+            p.parent()
+                .and_then(|d| d.parent())
+                .map(|d| d.join("share/sentra/dist"))
+        })
         .filter(|p| p.is_dir())
         // ponytail: XDG data dir assumed at $HOME/.local/share; add env override when packaging
-        .or_else(|| std::env::var("HOME").ok().map(|h| std::path::PathBuf::from(h).join(".local/share/sentra/dist")).filter(|p| p.is_dir()))
+        .or_else(|| {
+            std::env::var("HOME")
+                .ok()
+                .map(|h| std::path::PathBuf::from(h).join(".local/share/sentra/dist"))
+                .filter(|p| p.is_dir())
+        })
         .unwrap_or_else(|| rel.into())
 }
 
@@ -185,7 +201,9 @@ fn http_static(mut s: std::net::TcpStream, rel: &str) -> Result<(), String> {
         "HTTP/1.1 200 OK\r\nContent-Type: {ct}\r\nCache-Control: no-store, must-revalidate\r\nContent-Length: {}\r\n\r\n",
         body.len()
     );
-    s.write_all(head.as_bytes()).and_then(|_| s.write_all(&body)).map_err(|e| e.to_string())
+    s.write_all(head.as_bytes())
+        .and_then(|_| s.write_all(&body))
+        .map_err(|e| e.to_string())
 }
 
 /// SSE: subscribe the global feed, stream events until the client disconnects.
@@ -212,7 +230,11 @@ fn tcp_conn(s: std::net::TcpStream) -> Result<(), String> {
     let mut peek = [0u8; 4];
     let n = s.peek(&mut peek).map_err(|e| e.to_string())?;
     let p = &peek[..n];
-    if p.starts_with(b"GET") || p.starts_with(b"POST") || p.starts_with(b"OPTI") || p.starts_with(b"HEAD") {
+    if p.starts_with(b"GET")
+        || p.starts_with(b"POST")
+        || p.starts_with(b"OPTI")
+        || p.starts_with(b"HEAD")
+    {
         http_conn(s)
     } else {
         handle_conn(s)
@@ -246,11 +268,13 @@ fn serve_unix() -> Result<(), String> {
     for stream in listener.incoming() {
         match stream {
             Ok(s) => {
-                let _ = std::thread::Builder::new().name("conn".into()).spawn(move || {
-                    if let Err(e) = handle_conn(s) {
-                        eprintln!("sentra: conn: {e}");
-                    }
-                });
+                let _ = std::thread::Builder::new()
+                    .name("conn".into())
+                    .spawn(move || {
+                        if let Err(e) = handle_conn(s) {
+                            eprintln!("sentra: conn: {e}");
+                        }
+                    });
             }
             Err(e) => eprintln!("sentra: accept: {e}"),
         }
@@ -272,10 +296,11 @@ fn socket_path() -> Result<std::path::PathBuf, String> {
     Ok(std::path::PathBuf::from(dir).join("sentra.sock"))
 }
 
-
 /// Streams we can duplicate for the split reader/writer design.
 trait StreamClone {
-    fn try_clone(&self) -> std::io::Result<Self> where Self: Sized;
+    fn try_clone(&self) -> std::io::Result<Self>
+    where
+        Self: Sized;
 }
 impl StreamClone for UnixStream {
     fn try_clone(&self) -> std::io::Result<Self> {
@@ -307,7 +332,10 @@ where
         let req: Req = match serde_json::from_str(line.trim()) {
             Ok(r) => r,
             Err(e) => {
-                write_resp(&shared, &json!({"ok": false, "err": format!("bad request: {e}")}))?;
+                write_resp(
+                    &shared,
+                    &json!({"ok": false, "err": format!("bad request: {e}")}),
+                )?;
                 continue;
             }
         };
@@ -340,7 +368,10 @@ where
     }
 }
 
-fn write_resp<S: Write>(stream: &std::sync::Arc<std::sync::Mutex<S>>, v: &Value) -> Result<(), String> {
+fn write_resp<S: Write>(
+    stream: &std::sync::Arc<std::sync::Mutex<S>>,
+    v: &Value,
+) -> Result<(), String> {
     let mut line = v.to_string();
     line.push('\n');
     let mut s = stream.lock().map_err(|e| e.to_string())?;
@@ -364,7 +395,11 @@ fn subscribe(req: &Req, tx: mpsc::Sender<Value>) -> Result<(), String> {
 }
 
 fn unwatch(req: &Req) {
-    let Some(a) = req.id.as_deref().or(req.name.as_deref()).and_then(registry::resolve)
+    let Some(a) = req
+        .id
+        .as_deref()
+        .or(req.name.as_deref())
+        .and_then(registry::resolve)
     else {
         return;
     };
@@ -372,7 +407,10 @@ fn unwatch(req: &Req) {
 }
 
 fn err_unknown(req: &Req) -> String {
-    format!("agent {} not found", req.id.as_deref().or(req.name.as_deref()).unwrap_or("?"))
+    format!(
+        "agent {} not found",
+        req.id.as_deref().or(req.name.as_deref()).unwrap_or("?")
+    )
 }
 
 fn dispatch(req: &Req) -> Value {
@@ -410,7 +448,10 @@ fn preset_probe() -> Value {
         let path = if abs {
             bin.to_string()
         } else {
-            bins.iter().find(|d| d.join(bin).is_file()).map(|d| d.join(bin).display().to_string()).unwrap_or_default()
+            bins.iter()
+                .find(|d| d.join(bin).is_file())
+                .map(|d| d.join(bin).display().to_string())
+                .unwrap_or_default()
         };
         out.push(json!({"name": name, "argv": argv, "found": found, "path": path, "ready": found}));
     }
@@ -540,34 +581,40 @@ fn spawn(req: &Req) -> Value {
         Ok(a) => a,
         Err(e) => {
             let mut subs = crate::registry::lock(&crate::registry::GLOBAL_SUBS);
-            subs.retain(|tx| tx.send(json!({"evt": "error", "code": "SPAWN_FAILED", "msg": &e})).is_ok());
+            subs.retain(|tx| {
+                tx.send(json!({"evt": "error", "code": "SPAWN_FAILED", "msg": &e}))
+                    .is_ok()
+            });
             return json!({"ok": false, "err": e});
         }
     };
     // stamp persona role for roster badges
     if let Some(pv) = &profile {
-        *crate::registry::lock(&agent.role) =
-            Some(pv.get("role").and_then(Value::as_str).unwrap_or("").to_string());
+        *crate::registry::lock(&agent.role) = Some(
+            pv.get("role")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string(),
+        );
     }
     // Persona preamble + lessons are typed as the agent's first input, but
     // only after the TUI has drawn its first frame: writing before init gets
     // swallowed by the alternate-screen switch. Keep one write so the pieces
     // cannot interleave with a user keystroke.
     let mut prelude = String::new();
-    if let Some(pv) = &profile {
-        if let Some(preamble) = pv.get("preamble").and_then(Value::as_str)
-            && !preamble.is_empty()
-        {
-            prelude.push_str(preamble);
-            prelude.push('\n');
-        }
+    if let Some(pv) = &profile
+        && let Some(preamble) = pv.get("preamble").and_then(Value::as_str)
+        && !preamble.is_empty()
+    {
+        prelude.push_str(preamble);
+        prelude.push('\n');
     }
     // Lessons belong to the preset (claude, omp, …), not only to personas: a
     // plain `sentra spawn --preset omp` should inherit what previous omp runs
     // learned too. Profiles override the key so a persona keeps its own notes.
     let lessons_key = profile
         .as_ref()
-        .and_then(|pv| preset_of(pv))
+        .and_then(|pv: &Value| preset_of(pv))
         .or_else(|| req.preset.clone());
     if let Some(key) = lessons_key {
         // Never type lesson text into a shell prompt: a newline in captured
@@ -619,26 +666,22 @@ fn inject_when_ready(a: &std::sync::Arc<registry::Agent>, text: String) {
 
 /// Spawn straight from a preset name (used by profile fallback).
 fn spawn_preset_named(preset: &str, req: &Req) -> Value {
-    spawn(
-        &Req {
-            preset: Some(preset.to_string()),
-            profile: None,
-            fallback: None,
-            ..req.clone()
-        },
-    )
+    spawn(&Req {
+        preset: Some(preset.to_string()),
+        profile: None,
+        fallback: None,
+        ..req.clone()
+    })
 }
 
 /// Spawn raw argv (used by unknown-profile fallback).
 fn spawn_argv(argv: Vec<String>, req: &Req) -> Value {
-    spawn(
-        &Req {
-            profile: None,
-            fallback: None,
-            argv: Some(argv),
-            ..req.clone()
-        },
-    )
+    spawn(&Req {
+        profile: None,
+        fallback: None,
+        argv: Some(argv),
+        ..req.clone()
+    })
 }
 /// Best-effort write into a fresh agent's TTY; failures don't fail the spawn.
 fn inject(a: &std::sync::Arc<registry::Agent>, text: &str) {
@@ -693,7 +736,8 @@ fn read(req: &Req) -> Value {
     let tail = req.tail.min(RING_CAP) as usize;
     let ring = crate::registry::lock(&a.ring);
     let start = ring.len().saturating_sub(tail);
-    let chunk = String::from_utf8_lossy(&ring.iter().skip(start).copied().collect::<Vec<u8>>()).into_owned();
+    let chunk = String::from_utf8_lossy(&ring.iter().skip(start).copied().collect::<Vec<u8>>())
+        .into_owned();
     drop(ring);
     let (alive, _) = status(&a);
     json!({"ok": true, "id": a.id, "chunk": chunk, "alive": alive})
@@ -710,7 +754,11 @@ fn resize(req: &Req) -> Value {
     let Some(m) = master.as_ref() else {
         return json!({"ok": false, "err": "agent has no pty master"});
     };
-    match m.resize(portable_pty::PtySize { rows, cols, ..Default::default() }) {
+    match m.resize(portable_pty::PtySize {
+        rows,
+        cols,
+        ..Default::default()
+    }) {
         Ok(()) => json!({"ok": true}),
         Err(e) => json!({"ok": false, "err": format!("resize: {e}")}),
     }
@@ -740,9 +788,10 @@ fn wait(req: &Req) -> Value {
                 };
                 if answered
                     && let Some(t) = last_out
-                    && t.elapsed() >= Duration::from_millis(idle_ms) {
-                        return json!({"ok": true, "idle": true});
-                    }
+                    && t.elapsed() >= Duration::from_millis(idle_ms)
+                {
+                    return json!({"ok": true, "idle": true});
+                }
             }
         } else {
             return json!({"ok": true, "exited": true, "code": code});
@@ -792,7 +841,12 @@ fn forget(req: &Req) -> Value {
 }
 
 fn lessons_cmd(req: &Req) -> Value {
-    let Some(key) = req.key.as_deref().or(req.name.as_deref()).filter(|k| !k.is_empty()) else {
+    let Some(key) = req
+        .key
+        .as_deref()
+        .or(req.name.as_deref())
+        .filter(|k| !k.is_empty())
+    else {
         return json!({"ok": false, "err": "lessons: need key (profile or agent name)"});
     };
     if req.text.as_deref() == Some("-") {

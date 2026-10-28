@@ -22,9 +22,10 @@ pub fn presets() -> Map<String, Value> {
     }
     if let Some(home) = std::env::var_os("HOME") {
         let p = PathBuf::from(home).join(".config/sentra/presets.json");
-        if let Ok(Value::Object(over)) = fs::read_to_string(p).map_err(drop).and_then(|t| {
-            serde_json::from_str(&t).map_err(drop)
-        }) {
+        if let Ok(Value::Object(over)) = fs::read_to_string(p)
+            .map_err(drop)
+            .and_then(|t| serde_json::from_str(&t).map_err(drop))
+        {
             for (k, v) in over {
                 m.insert(k, v);
             }

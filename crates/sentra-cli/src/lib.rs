@@ -1,14 +1,15 @@
 //! sentra-cli: thin unix-socket client. Verb → JSONL wire mapping + friendly output.
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 
 pub fn socket_path() -> PathBuf {
     if let Ok(p) = std::env::var("SENTRA_SOCKET")
-        && !p.is_empty() {
-            return PathBuf::from(p);
-        }
+        && !p.is_empty()
+    {
+        return PathBuf::from(p);
+    }
     let dir = match std::env::var("XDG_RUNTIME_DIR") {
         Ok(d) if !d.is_empty() => PathBuf::from(d).join("sentra"),
         _ => PathBuf::from(format!("/tmp/sentra-{}", { unsafe { libc::getuid() } })),
@@ -87,7 +88,10 @@ fn cmd(args: &[String]) -> Result<(), String> {
     let verb = args
         .first()
         .ok_or("usage: sentra <spawn|list|send|wait|read|resize|kill|forget|presets|profiles|lessons|research> [args] [--json]")?;
-    let rest: Vec<&String> = args[1..].iter().filter(|a| a.as_str() != "--json").collect();
+    let rest: Vec<&String> = args[1..]
+        .iter()
+        .filter(|a| a.as_str() != "--json")
+        .collect();
 
     if verb == "presets" {
         return presets_cmd(json);
@@ -125,18 +129,30 @@ fn cmd(args: &[String]) -> Result<(), String> {
 
 fn friendly(verb: &str, resp: &Value) {
     match verb {
-        "spawn" => println!("spawned agent {} `{}`", resp["id"], resp["name"].as_str().unwrap_or("?")),
+        "spawn" => println!(
+            "spawned agent {} `{}`",
+            resp["id"],
+            resp["name"].as_str().unwrap_or("?")
+        ),
         "list" => {
             if let Some(agents) = resp.get("agents").and_then(Value::as_array) {
                 for a in agents {
                     println!(
                         "{:>4}  {} {}  [{}]",
                         a["id"],
-                        if a["alive"].as_bool() == Some(true) { "●" } else { "○" },
+                        if a["alive"].as_bool() == Some(true) {
+                            "●"
+                        } else {
+                            "○"
+                        },
                         a["name"].as_str().unwrap_or("?"),
                         a["argv"]
                             .as_array()
-                            .map(|x| x.iter().filter_map(Value::as_str).collect::<Vec<_>>().join(" "))
+                            .map(|x| x
+                                .iter()
+                                .filter_map(Value::as_str)
+                                .collect::<Vec<_>>()
+                                .join(" "))
                             .unwrap_or_default()
                     );
                 }
@@ -186,26 +202,33 @@ pub fn presets() -> Map<String, Value> {
         .map(|h| PathBuf::from(h).join(".config/sentra/presets.json"))
         .unwrap_or_default();
     if let Ok(txt) = std::fs::read_to_string(path)
-        && let Ok(Value::Object(user)) = serde_json::from_str::<Value>(&txt) {
-            for (k, v) in user {
-                if v.is_array() {
-                    m.insert(k, v);
-                }
+        && let Ok(Value::Object(user)) = serde_json::from_str::<Value>(&txt)
+    {
+        for (k, v) in user {
+            if v.is_array() {
+                m.insert(k, v);
             }
         }
+    }
     m
 }
 
 fn preset_argv(v: &Value) -> Option<Vec<String>> {
     v.as_array().map(|a| {
         a.iter()
-            .map(|x| x.as_str().map(str::to_string).unwrap_or_else(|| x.to_string()))
+            .map(|x| {
+                x.as_str()
+                    .map(str::to_string)
+                    .unwrap_or_else(|| x.to_string())
+            })
             .collect()
     })
 }
 
 fn target(rest: &[&String]) -> Result<String, String> {
-    rest.first().map(|s| (*s).clone()).ok_or_else(|| "missing <id|name> argument".to_string())
+    rest.first()
+        .map(|s| (*s).clone())
+        .ok_or_else(|| "missing <id|name> argument".to_string())
 }
 
 fn build_spawn(rest: &[&String]) -> Result<Value, String> {
@@ -215,7 +238,9 @@ fn build_spawn(rest: &[&String]) -> Result<Value, String> {
         match rest[i].as_str() {
             "--name" | "--cwd" | "--preset" | "--profile" => {
                 let key = &rest[i][2..];
-                let val = rest.get(i + 1).ok_or_else(|| format!("{} needs a value", rest[i]))?;
+                let val = rest
+                    .get(i + 1)
+                    .ok_or_else(|| format!("{} needs a value", rest[i]))?;
                 v[key] = json!(val);
                 i += 2;
             }
@@ -230,12 +255,19 @@ fn build_spawn(rest: &[&String]) -> Result<Value, String> {
         }
     }
     if v.get("preset").is_none() && v.get("argv").is_none() && v.get("profile").is_none() {
-        return Err("usage: sentra spawn [--name N] [--cwd D] (--preset P | --profile P | -- argv…)".into());
+        return Err(
+            "usage: sentra spawn [--name N] [--cwd D] (--preset P | --profile P | -- argv…)".into(),
+        );
     }
     Ok(v)
 }
 
-fn build_1opt(rest: &[&String], verb: &'static str, opt: &'static str, default: &str) -> Result<Value, String> {
+fn build_1opt(
+    rest: &[&String],
+    verb: &'static str,
+    opt: &'static str,
+    default: &str,
+) -> Result<Value, String> {
     let t = target(rest)?;
     let n = rest
         .iter()
@@ -257,7 +289,11 @@ fn build_wait(rest: &[&String]) -> Result<Value, String> {
                 .get(i + 1)
                 .and_then(|s| s.parse::<u64>().ok())
                 .ok_or_else(|| format!("{flag} needs a number"))?;
-            let key = if flag == "--idle-ms" { "idle_ms" } else { "timeout_ms" };
+            let key = if flag == "--idle-ms" {
+                "idle_ms"
+            } else {
+                "timeout_ms"
+            };
             v[key] = json!(n);
         }
     }
@@ -269,7 +305,11 @@ fn build_wait(rest: &[&String]) -> Result<Value, String> {
 
 fn build_send(rest: &[&String]) -> Result<Value, String> {
     let t = target(rest)?;
-    let args: Vec<&String> = rest.iter().filter(|a| a.as_str() != "--no-enter").copied().collect();
+    let args: Vec<&String> = rest
+        .iter()
+        .filter(|a| a.as_str() != "--no-enter")
+        .copied()
+        .collect();
     let text = args.get(1).map(|s| s.as_str()).unwrap_or("");
     let enter = !rest.iter().any(|a| a.as_str() == "--no-enter");
     Ok(json!({"cmd":"send","id":t,"text":text,"enter":enter}))
@@ -292,39 +332,64 @@ fn build_resize(rest: &[&String]) -> Result<Value, String> {
             .position(|a| a.as_str() == flag)
             .and_then(|i| rest.get(i + 1))
             .and_then(|s| s.parse::<u16>().ok())
-            .ok_or_else(|| format!("usage: sentra resize <id|name> --cols N --rows N ({flag} missing/invalid)"))
+            .ok_or_else(|| {
+                format!("usage: sentra resize <id|name> --cols N --rows N ({flag} missing/invalid)")
+            })
     };
     Ok(json!({"cmd":"resize","id":t,"cols":grab("--cols")?,"rows":grab("--rows")?}))
 }
 /// `lessons` and `research` — shape-mapping too custom for build_* helpers.
 fn special(verb: &str, rest: &[&String], json: bool) -> Result<(), String> {
     let mut v = json!({"cmd": verb});
-    let flags: Vec<&String> = rest.iter().filter(|a| a.as_str().starts_with("--")).copied().collect();
+    let flags: Vec<&String> = rest
+        .iter()
+        .filter(|a| a.as_str().starts_with("--"))
+        .copied()
+        .collect();
     match verb {
         "lessons" => {
             // sentra lessons <key> [text…] | --show | --clear
-            let positional: Vec<&String> = rest.iter().filter(|a| !a.as_str().starts_with("--")).copied().collect();
-            let key = positional.first().ok_or("usage: sentra lessons <key> [text…] | --clear")?;
+            let positional: Vec<&String> = rest
+                .iter()
+                .filter(|a| !a.as_str().starts_with("--"))
+                .copied()
+                .collect();
+            let key = positional
+                .first()
+                .ok_or("usage: sentra lessons <key> [text…] | --clear")?;
             v["key"] = json!(key);
             let text: Vec<&String> = positional.iter().skip(1).copied().collect();
             if flags.iter().any(|f| f.as_str() == "--clear") {
                 v["text"] = json!("-");
             } else if !text.is_empty() {
-                let joined = text.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(" ");
+                let joined = text
+                    .iter()
+                    .map(|s| s.as_str())
+                    .collect::<Vec<_>>()
+                    .join(" ");
                 v["text"] = json!(joined);
             } // else: show
         }
         "research" => {
-            let positional: Vec<&String> = rest.iter().filter(|a| !a.as_str().starts_with("--")).copied().collect();
-            let q = positional.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(" ");
+            let positional: Vec<&String> = rest
+                .iter()
+                .filter(|a| !a.as_str().starts_with("--"))
+                .copied()
+                .collect();
+            let q = positional
+                .iter()
+                .map(|s| s.as_str())
+                .collect::<Vec<_>>()
+                .join(" ");
             if q.is_empty() {
                 return Err("usage: sentra research \"query\" [--limit 8]".into());
             }
             v["query"] = json!(q);
             if let Some(i) = flags.iter().position(|f| f.as_str() == "--limit")
-                && let Some(n) = flags.get(i + 1).and_then(|s| s.parse::<u32>().ok()) {
-                    v["limit"] = json!(n);
-                }
+                && let Some(n) = flags.get(i + 1).and_then(|s| s.parse::<u32>().ok())
+            {
+                v["limit"] = json!(n);
+            }
         }
         _ => unreachable!(),
     }
@@ -345,9 +410,23 @@ fn special(verb: &str, rest: &[&String], json: bool) -> Result<(), String> {
         }
         "research" => {
             let mut n = 0;
-            for r in resp.get("results").and_then(Value::as_array).unwrap_or(&vec![]) {
+            for r in resp
+                .get("results")
+                .and_then(Value::as_array)
+                .unwrap_or(&vec![])
+            {
                 n += 1;
-                println!("{} · {}\n  {}", r["title"].as_str().unwrap_or("?"), r["url"].as_str().unwrap_or(""), r["content"].as_str().unwrap_or("").chars().take(200).collect::<String>());
+                println!(
+                    "{} · {}\n  {}",
+                    r["title"].as_str().unwrap_or("?"),
+                    r["url"].as_str().unwrap_or(""),
+                    r["content"]
+                        .as_str()
+                        .unwrap_or("")
+                        .chars()
+                        .take(200)
+                        .collect::<String>()
+                );
             }
             eprintln!("# {n} results (searxng)");
         }

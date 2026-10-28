@@ -1,8 +1,16 @@
+# Build artifacts
 /target
-crates/sentra-ui/node_modules
 *.log
 
-# Internal prompts, personal specifications & audit docs
+# Dependencies
+crates/sentra-ui/node_modules
+
+# Design source — 7 MB Figma-derived binary (design/sentra-ui.figcraft).
+# Kept locally only; never commit. See design/README.md.
+*.figcraft
+
+# Internal planning scratch — never publish.
+# PRDs, prompts, audits and plans that shape the product but are not part of it.
 PRD.md
 prd.md
 PROMPT.md

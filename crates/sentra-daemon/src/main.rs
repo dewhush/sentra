@@ -3,19 +3,25 @@ fn main() {
     match args.first().map(String::as_str) {
         Some("serve") => {
             let with_ui = args.iter().any(|a| a == "--with-ui");
-            if let Some(pos) = args.iter().position(|a| a == "--port" || a == "-p") {
-                if let Some(port) = args.get(pos + 1) {
-                    unsafe { std::env::set_var("SENTRA_TCP", format!("127.0.0.1:{port}")); }
+            if let Some(pos) = args.iter().position(|a| a == "--port" || a == "-p")
+                && let Some(port) = args.get(pos + 1)
+            {
+                unsafe {
+                    std::env::set_var("SENTRA_TCP", format!("127.0.0.1:{port}"));
                 }
-            } else if let Some(pos) = args.iter().position(|a| a == "--addr") {
-                if let Some(addr) = args.get(pos + 1) {
-                    unsafe { std::env::set_var("SENTRA_TCP", addr); }
+            } else if let Some(pos) = args.iter().position(|a| a == "--addr")
+                && let Some(addr) = args.get(pos + 1)
+            {
+                unsafe {
+                    std::env::set_var("SENTRA_TCP", addr);
                 }
             }
             if with_ui {
                 serve_with_ui();
                 if daemon_alive() {
-                    eprintln!("sentra: daemon already running — UI attached, not starting a second daemon");
+                    eprintln!(
+                        "sentra: daemon already running — UI attached, not starting a second daemon"
+                    );
                     return;
                 }
             }
@@ -40,7 +46,10 @@ fn serve_with_ui() {
         return;
     };
     let _ = std::process::Command::new(ui)
-        .env("DISPLAY", std::env::var("DISPLAY").unwrap_or_else(|_| ":0".into()))
+        .env(
+            "DISPLAY",
+            std::env::var("DISPLAY").unwrap_or_else(|_| ":0".into()),
+        )
         .spawn();
 }
 

@@ -1,8 +1,16 @@
 <p align="center">
   <img src="assets/banner.png" alt="Sentra — many terminals, one window" width="100%">
 </p>
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="License: MIT"></a>
+  <img src="https://img.shields.io/badge/rust-2024-orange" alt="Rust 2024">
+  <img src="https://img.shields.io/badge/platform-Linux-informational" alt="Platform: Linux">
+  <img src="https://img.shields.io/badge/daemon%20RSS-%E2%89%A430%20MB%20budget-brightgreen" alt="Daemon RSS budget: 30 MB">
+</p>
 
-# sentra
+# Sentra — Multi-Agent Terminal Workspace for AI CLI Agents on Linux
+
+### Many AI CLI agents, one window. A native Rust daemon owns the PTYs; the UI is only a viewer.
 
 **Many AI-agent terminals, one window — and agents that hand work to each other.**
 
@@ -13,6 +21,18 @@ throw work at each other with one triad: **send → wait → read** — from the
 
 It is a stripped-down orchestrator. Not an IDE, not a worktree manager, not a
 cloud thing.
+
+## Table of Contents
+
+- [Why it looks like this](#why-it-looks-like-this)
+- [Features](#features)
+- [Install](#install--run)
+- [Usage](#usage)
+- [Roadmap](#️-architectural-roadmap)
+- [Security](#security-notes)
+- [FAQ](#faq)
+- [Contributing](#contributing)
+- [License](#license)
 
 ```
 ┌──────────┐  unix socket (JSON lines)  ┌──────────────────┐
@@ -57,6 +77,8 @@ sentra send claude "Omp said: $(sentra read omp --tail 4000). Fix the top 3."
 
 ## Install / run
 
+**No packaged release yet — build from source.**
+
 ```sh
 cargo build --release
 ./target/release/sentra serve             # daemon + browser UI on :7621
@@ -68,6 +90,15 @@ cargo build --release
 
 The web UI is served at `http://127.0.0.1:7621` with no extra step. `--with-ui`
 spawns the optional Tauri window and still serves the browser UI.
+
+| Distro | Install | Notes |
+|---|---|---|
+| **Arch Linux** | `cargo build --release` | No AUR package is published; nothing to `pacman -S` yet. |
+| **Debian / Ubuntu** | `sudo apt install build-essential pkg-config libssl-dev libwebkit2gtk-4.1-dev libgtk-3-dev` then `cargo build --release` | The `webkit2gtk` / `gtk` packages are only needed for the optional Tauri desktop window. |
+| **Fedora** | `sudo dnf install gcc pkgconf-pkg-config openssl-devel webkit2gtk4.1-devel gtk3-devel` then `cargo build --release` | Same as above. |
+| **From source (any distro)** | `rustup` (Rust 1.85+, 2024 edition) → `cargo build --release` | The only supported install path today. |
+
+## Usage
 
 Verbs: `spawn | list | send | wait | read | resize | kill | forget | presets |
 profiles | lessons | research`. All `--json`-capable. Agent reference is a
@@ -147,10 +178,38 @@ Agents die with the daemon by design (it owns the PTYs). Persistence is limited
 to `presets.json`, `profiles/`, and `lessons/`; scrollback does not survive a
 daemon restart.
 
+## FAQ
+
+**How is Sentra different from tmux?** tmux multiplexes *terminals* — it keeps
+shells alive and splits panes. Sentra multiplexes *agents*: the daemon owns the
+PTYs, and on top of that it speaks a handoff protocol (`send → wait → read`)
+over a JSON-lines socket, tracks presets/profiles/lessons, and draws a 1–8 pane
+GUI. You can run tmux *inside* a Sentra pane; tmux cannot ask another pane what
+it just said.
+
+**Does it work without a GUI?** Yes. The daemon and the `sentra` CLI are
+headless — `sentra serve` runs with no browser and no Tauri window, and every
+verb is scriptable and `--json`-capable. The UI is optional.
+
+**What agents are supported?** Any command that runs in a PTY, with first-class
+presets for `claude`, `codex`, `hermes`, and `omp`. Sentra is agent-agnostic: if
+it runs in a terminal, it runs in a pane.
+
+**Is it a web app?** No. Sentra is a local Linux desktop harness — a native Rust
+daemon that owns the PTYs, with the UI as a viewer. There is an *optional*
+localhost browser viewer (`SENTRA_TCP=127.0.0.1:7621 sentra serve`) that streams
+the same panes over SSE, but nothing runs in the cloud and nothing leaves your
+machine unless you expose that port yourself.
+
 ## Contributing
 
 PRs welcome — read [CONTRIBUTING.md](CONTRIBUTING.md) first: one design rule,
 hard cuts, smoke suite must stay green.
+
+If Sentra is useful to you, **star the repo** — it is the single thing that
+helps other Linux users find it.
+
+Building, testing, and the smoke suite: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
 ## License
 

@@ -5,5 +5,9 @@ Third-party components bundled in this repository:
 - crates/sentra-ui/dist/fonts/ — Archivo, Inter (SIL Open Font License 1.1);
   Geist Mono (SIL Open Font License 1.1, © Vercel); Instrument Serif
   (SIL Open Font License 1.1, license text in InstrumentSerif-LICENSE.txt).
+- crates/sentra-ui/dist/icons/ — AI/model/CLI brand icons (claude, openai,
+  codex, hermes, bash) derived from `@lobehub/icons` v6.13.0, MIT License,
+  © 2023 LobeHub. https://github.com/lobehub/lobe-icons
+  (md, json, pdf, txt, omp and logo are original artwork.)
 
 All other code is MIT Licensed (see LICENSE).

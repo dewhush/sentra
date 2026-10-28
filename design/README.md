@@ -1,6 +1,6 @@
 # Sentra UI — design specs
 
-Source: `~/figcraft-work/sentra-ui.figcraft`, page **Sentra Application UI**.
+Source: `sentra-ui.figcraft` (page **Sentra Application UI**). That file is a 7 MB Figma-derived binary and is **not in this repository** — it is kept locally at `~/figcraft-work/sentra-ui.figcraft` and ignored via `*.figcraft`. The specs below are the reviewable, in-repo record of it.
 Canvas is 1440×900 unless noted. Light is the spec. Dark is the same layout on the dark tokens.
 
 These files describe the design. They do not describe what production does today.

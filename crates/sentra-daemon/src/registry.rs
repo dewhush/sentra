@@ -4,7 +4,7 @@ use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize};
+use portable_pty::{CommandBuilder, MasterPty, PtySize, native_pty_system};
 use serde_json::json;
 
 const RING_CAP: usize = 262_144;
@@ -79,7 +79,11 @@ pub fn spawn(
         return Err(format!("{}: not found on $PATH", argv[0]));
     }
     let pty = native_pty_system()
-        .openpty(PtySize { rows: 30, cols: 120, ..Default::default() })
+        .openpty(PtySize {
+            rows: 30,
+            cols: 120,
+            ..Default::default()
+        })
         .map_err(|e| format!("openpty: {e}"))?;
     let mut cmd = CommandBuilder::new(&argv[0]);
     cmd.args(&argv[1..]);
@@ -87,7 +91,10 @@ pub fn spawn(
     if let Some(c) = &cwd {
         cmd.cwd(c);
     }
-    let child = pty.slave.spawn_command(cmd).map_err(|e| format!("spawn: {e}"))?;
+    let child = pty
+        .slave
+        .spawn_command(cmd)
+        .map_err(|e| format!("spawn: {e}"))?;
     drop(pty.slave);
     let pid = child.process_id().unwrap_or(0);
     let reader = pty.master.try_clone_reader().map_err(|e| e.to_string())?;
@@ -132,9 +139,10 @@ pub fn spawn(
 pub fn resolve(id_or_name: &str) -> Option<Arc<Agent>> {
     let reg = lock(&REGISTRY);
     if let Ok(id) = id_or_name.parse::<u32>()
-        && let Some(a) = reg.iter().find(|a| a.id == id) {
-            return Some(a.clone());
-        }
+        && let Some(a) = reg.iter().find(|a| a.id == id)
+    {
+        return Some(a.clone());
+    }
     reg.iter().find(|a| a.name == id_or_name).cloned()
 }
 
@@ -155,9 +163,15 @@ fn push_output(agent: &Agent, bytes: &[u8]) {
         u64::try_from(dropped).unwrap_or(u64::MAX)
     };
     if dropped > 0 {
-        fanout(agent, json!({"evt":"dropped","id":agent.id,"bytes":dropped}));
+        fanout(
+            agent,
+            json!({"evt":"dropped","id":agent.id,"bytes":dropped}),
+        );
     }
-    fanout(agent, json!({"evt":"out","id":agent.id,"chunk":String::from_utf8_lossy(bytes)}));
+    fanout(
+        agent,
+        json!({"evt":"out","id":agent.id,"chunk":String::from_utf8_lossy(bytes)}),
+    );
 }
 
 fn reader_loop(agent: Arc<Agent>, mut reader: Box<dyn Read + Send>) {
@@ -177,7 +191,9 @@ fn reader_loop(agent: Arc<Agent>, mut reader: Box<dyn Read + Send>) {
         .take()
         .and_then(|mut c| c.wait().ok())
         .map(|s| s.exit_code() as i32);
-    agent.alive.store(false, std::sync::atomic::Ordering::SeqCst);
+    agent
+        .alive
+        .store(false, std::sync::atomic::Ordering::SeqCst);
     let code = {
         let mut ec = lock(&agent.exit_code);
         if ec.is_none() {
@@ -187,7 +203,10 @@ fn reader_loop(agent: Arc<Agent>, mut reader: Box<dyn Read + Send>) {
     };
     lock(&agent.master).take(); // drop master so daemon can free fds
     if code != 0 {
-        fanout(&agent, json!({"evt":"error","id":agent.id,"name":agent.name,"code":code,"msg":format!("agent {} exited with status {}", agent.name, code)}));
+        fanout(
+            &agent,
+            json!({"evt":"error","id":agent.id,"name":agent.name,"code":code,"msg":format!("agent {} exited with status {}", agent.name, code)}),
+        );
     }
     fanout(&agent, json!({"evt":"exit","id":agent.id,"code":code}));
 }
