@@ -43,39 +43,55 @@ fn default_tail() -> u32 {
     8000
 }
 
+pub static DAEMON_URL: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
 pub fn serve() -> Result<(), String> {
-    // optional TCP peer: SENTRA_TCP=host:port (e.g. 0.0.0.0:7621 or a tailscale IP).
-    // Same JSONL protocol + static web UI + SSE feed on the same port.
-    if let Ok(addr) = std::env::var("SENTRA_TCP") {
-        std::thread::Builder::new()
-            .name("tcp".into())
-            .spawn(move || {
-                if let Err(e) = serve_tcp(&addr) {
-                    eprintln!("sentra: tcp {addr}: {e}");
-                }
-            })
-            .map_err(|e| format!("spawn tcp thread: {e}"))?;
+    // Default TCP peer: SENTRA_TCP or 127.0.0.1:7621.
+    // Static web UI + SSE feed on the same port.
+    let tcp_addr = std::env::var("SENTRA_TCP").unwrap_or_else(|_| "127.0.0.1:7621".into());
+    let bound_url = match std::net::TcpListener::bind(&tcp_addr) {
+        Ok(listener) => {
+            let actual_addr = listener
+                .local_addr()
+                .map(|a| a.to_string())
+                .unwrap_or_else(|_| tcp_addr.clone());
+            let url = format!("http://{actual_addr}");
+            *DAEMON_URL.lock().unwrap() = Some(url.clone());
+            std::thread::Builder::new()
+                .name("tcp".into())
+                .spawn(move || {
+                    for stream in listener.incoming() {
+                        match stream {
+                            Ok(s) => {
+                                let _ = s.set_nodelay(true);
+                                let _ = std::thread::Builder::new().name("tcpconn".into()).spawn(move || {
+                                    if let Err(e) = tcp_conn(s) {
+                                        eprintln!("sentra: tcpconn: {e}");
+                                    }
+                                });
+                            }
+                            Err(e) => eprintln!("sentra: tcp accept: {e}"),
+                        }
+                    }
+                })
+                .map_err(|e| format!("spawn tcp thread: {e}"))?;
+            Some(url)
+        }
+        Err(e) => {
+            // one daemon per web port: a second launch must not fall through to
+            // "unix socket only" and hijack the socket from the running daemon
+            eprintln!("sentra: tcp {tcp_addr}: {e} (another daemon is already running)");
+            return Err(format!("tcp {tcp_addr} in use — sentra daemon already running"));
+        }
+    };
+
+    let sock = socket_path()?;
+    eprintln!("● sentra daemon running");
+    eprintln!("  → IPC socket : {}", sock.display());
+    if let Some(ref url) = bound_url {
+        eprintln!("  → Web UI URL : {url}");
     }
     serve_unix()
-}
-
-fn serve_tcp(addr: &str) -> Result<(), String> {
-    use std::net::TcpListener;
-    let listener = TcpListener::bind(addr).map_err(|e| format!("bind {addr}: {e}"))?;
-    for stream in listener.incoming() {
-        match stream {
-            Ok(s) => {
-                let _ = s.set_nodelay(true);
-                let _ = std::thread::Builder::new().name("tcpconn".into()).spawn(move || {
-                    if let Err(e) = tcp_conn(s) {
-                        eprintln!("sentra: tcpconn: {e}");
-                    }
-                });
-            }
-            Err(e) => eprintln!("sentra: tcp accept: {e}"),
-        }
-    }
-    Ok(())
 }
 
 
@@ -166,7 +182,7 @@ fn http_static(mut s: std::net::TcpStream, rel: &str) -> Result<(), String> {
         _ => "application/octet-stream",
     };
     let head = format!(
-        "HTTP/1.1 200 OK\r\nContent-Type: {ct}\r\nContent-Length: {}\r\n\r\n",
+        "HTTP/1.1 200 OK\r\nContent-Type: {ct}\r\nCache-Control: no-store, must-revalidate\r\nContent-Length: {}\r\n\r\n",
         body.len()
     );
     s.write_all(head.as_bytes()).and_then(|_| s.write_all(&body)).map_err(|e| e.to_string())
@@ -205,6 +221,10 @@ fn tcp_conn(s: std::net::TcpStream) -> Result<(), String> {
 
 fn serve_unix() -> Result<(), String> {
     let path = socket_path()?;
+    // never steal a socket a live daemon is already serving
+    if std::os::unix::net::UnixStream::connect(&path).is_ok() {
+        return Err(format!("daemon already running on {}", path.display()));
+    }
     if let Some(dir) = path.parent() {
         let existed = dir.exists();
         std::fs::create_dir_all(dir).map_err(|e| format!("mkdir {dir:?}: {e}"))?;
@@ -364,7 +384,9 @@ fn dispatch(req: &Req) -> Value {
         "resize" => resize(req),
         "wait" => wait(req),
         "kill" => kill(req),
+        "forget" => forget(req),
         "profiles" => json!({"ok": true, "profiles": crate::profiles::profiles()}),
+        "presets" => json!({"ok": true, "presets": preset_probe()}),
         "ping" => json!({"ok": true}),
         "lessons" => lessons_cmd(req),
         "research" => research(req),
@@ -372,8 +394,36 @@ fn dispatch(req: &Req) -> Value {
     }
 }
 
+fn preset_probe() -> Value {
+    let bins: Vec<std::path::PathBuf> = std::env::var_os("PATH")
+        .map(|p| std::env::split_paths(&p).collect())
+        .unwrap_or_default();
+    let mut out = Vec::new();
+    for (name, spec) in presets() {
+        let argv: Vec<String> = match &spec {
+            Value::Array(a) => a.iter().map(json_str).collect(),
+            _ => continue,
+        };
+        let bin = argv.first().map(String::as_str).unwrap_or("");
+        let abs = std::path::Path::new(bin).is_absolute() && std::path::Path::new(bin).is_file();
+        let found = abs || bins.iter().any(|d| d.join(bin).is_file());
+        let path = if abs {
+            bin.to_string()
+        } else {
+            bins.iter().find(|d| d.join(bin).is_file()).map(|d| d.join(bin).display().to_string()).unwrap_or_default()
+        };
+        out.push(json!({"name": name, "argv": argv, "found": found, "path": path, "ready": found}));
+    }
+    Value::Array(out)
+}
+
 fn list() -> Value {
     let reg = registry::lock(&registry::REGISTRY);
+    let daemon_url = DAEMON_URL
+        .lock()
+        .unwrap()
+        .clone()
+        .unwrap_or_else(|| "http://127.0.0.1:7621".into());
     let agents: Vec<Value> = reg
         .iter()
         .map(|a| {
@@ -389,11 +439,20 @@ fn list() -> Value {
                 "alive": alive,
                 "exit_code": exit_code,
                 "last_output_age_ms": registry_last_output_ms(a).unwrap_or(u64::MAX),
+                "last_input_age_ms": registry_last_input_ms(a),
                 "rss_kb": agent_rss_kb(a.pid),
             })
         })
         .collect();
-    json!({"ok": true, "agents": agents})
+    json!({
+        "ok": true,
+        "agents": agents,
+        "daemon_url": daemon_url,
+        "rss_kb": daemon_rss_kb(),
+        "socket": socket_path().ok().map(|p| p.display().to_string()),
+        "home": std::env::var("HOME").ok(),
+        "cwd": std::env::current_dir().ok().map(|p| p.display().to_string()),
+    })
 }
 
 fn status(a: &Agent) -> (bool, Option<i32>) {
@@ -406,6 +465,15 @@ fn status(a: &Agent) -> (bool, Option<i32>) {
 fn registry_last_output_ms(a: &Agent) -> Option<u64> {
     registry::lock(&a.last_output)
         .map(|t| u64::try_from(t.elapsed().as_millis()).unwrap_or(u64::MAX))
+}
+fn registry_last_input_ms(a: &Agent) -> Option<u64> {
+    registry::lock(&a.last_input)
+        .map(|t| u64::try_from(t.elapsed().as_millis()).unwrap_or(u64::MAX))
+}
+fn daemon_rss_kb() -> Option<u64> {
+    let s = std::fs::read_to_string("/proc/self/statm").ok()?;
+    let pages: u64 = s.split_whitespace().nth(1)?.parse().ok()?;
+    Some(pages * 4)
 }
 fn agent_rss_kb(pid: u32) -> Option<u64> {
     // statm: size resident shared text lib data dt (pages); RSS = 2nd field. 4K pages.
@@ -450,7 +518,13 @@ fn spawn(req: &Req) -> Value {
     } else if let Some(p) = &req.preset {
         match presets.get(p) {
             Some(Value::Array(a)) if !a.is_empty() => a.iter().map(json_str).collect(),
-            _ => return json!({"ok": false, "err": format!("preset {p:?} not found")}),
+            // A single bare token is ambiguous: it may be a preset name or a
+            // command. If the caller supplied the argv fallback (the UI does),
+            // spawn it instead of failing with "preset not found".
+            _ => match &req.argv {
+                Some(a) if !a.is_empty() => a.clone(),
+                _ => return json!({"ok": false, "err": format!("preset {p:?} not found")}),
+            },
         }
     } else if let Some(a) = &req.argv {
         a.clone()
@@ -458,30 +532,89 @@ fn spawn(req: &Req) -> Value {
         return json!({"ok": false, "err": "spawn: need preset, profile or argv"});
     };
     let cwd = req.cwd.clone();
-    let spawned = registry::spawn(req.name.as_deref(), argv, cwd);
+    // A persona spawn with no explicit name is named after the profile, so the
+    // roster says which persona is running instead of only its underlying CLI.
+    let auto_name = req.name.as_deref().or(req.profile.as_deref());
+    let spawned = registry::spawn(auto_name, argv, cwd);
     let agent = match spawned {
         Ok(a) => a,
-        Err(e) => return json!({"ok": false, "err": e}),
+        Err(e) => {
+            let mut subs = crate::registry::lock(&crate::registry::GLOBAL_SUBS);
+            subs.retain(|tx| tx.send(json!({"evt": "error", "code": "SPAWN_FAILED", "msg": &e})).is_ok());
+            return json!({"ok": false, "err": e});
+        }
     };
     // stamp persona role for roster badges
     if let Some(pv) = &profile {
         *crate::registry::lock(&agent.role) =
             Some(pv.get("role").and_then(Value::as_str).unwrap_or("").to_string());
     }
-    // inject persona preamble + lessons as the agent's first stdin
+    // Persona preamble + lessons are typed as the agent's first input, but
+    // only after the TUI has drawn its first frame: writing before init gets
+    // swallowed by the alternate-screen switch. Keep one write so the pieces
+    // cannot interleave with a user keystroke.
+    let mut prelude = String::new();
     if let Some(pv) = &profile {
         if let Some(preamble) = pv.get("preamble").and_then(Value::as_str)
             && !preamble.is_empty()
         {
-            inject(&agent, preamble);
-        }
-        let lessons_key = preset_of(pv).unwrap_or_else(|| agent.name.clone());
-        let lessons = crate::lessons::load(&lessons_key);
-        if !lessons.trim().is_empty() {
-            inject(&agent, &format!("\n# lessons-learned (auto)\n{lessons}\n"));
+            prelude.push_str(preamble);
+            prelude.push('\n');
         }
     }
+    // Lessons belong to the preset (claude, omp, …), not only to personas: a
+    // plain `sentra spawn --preset omp` should inherit what previous omp runs
+    // learned too. Profiles override the key so a persona keeps its own notes.
+    let lessons_key = profile
+        .as_ref()
+        .and_then(|pv| preset_of(pv))
+        .or_else(|| req.preset.clone());
+    if let Some(key) = lessons_key {
+        // Never type lesson text into a shell prompt: a newline in captured
+        // output could execute as a command.
+        if !is_shell_key(&key) {
+            let lessons = crate::lessons::load(&key);
+            if !lessons.trim().is_empty() {
+                // One line: chat TUIs treat raw newlines as submit.
+                let flat = lessons
+                    .lines()
+                    .map(str::trim)
+                    .filter(|l| !l.is_empty())
+                    .collect::<Vec<_>>()
+                    .join(" · ");
+                prelude.push_str(&format!("# lessons-learned (auto)\n{flat}\n"));
+            }
+        }
+    }
+    if !prelude.trim().is_empty() {
+        inject_when_ready(&agent, prelude);
+    }
     json!({"ok": true, "id": agent.id, "name": agent.name, "pid": agent.pid})
+}
+
+fn is_shell_key(key: &str) -> bool {
+    matches!(key, "bash" | "sh" | "zsh" | "fish" | "dash" | "ksh")
+}
+
+/// Wait for the first PTY byte (max 5s), then write the prelude once. If the
+/// process never speaks, inject anyway so the input is not silently dropped.
+fn inject_when_ready(a: &std::sync::Arc<registry::Agent>, text: String) {
+    let a = a.clone();
+    let _ = std::thread::Builder::new()
+        .name(format!("inject-{}", a.id))
+        .spawn(move || {
+            let deadline = Instant::now() + Duration::from_millis(5000);
+            while Instant::now() < deadline {
+                if !a.alive.load(std::sync::atomic::Ordering::SeqCst) {
+                    return;
+                }
+                if crate::registry::lock(&a.last_output).is_some() {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            inject(&a, &text);
+        });
 }
 
 /// Spawn straight from a preset name (used by profile fallback).
@@ -510,8 +643,11 @@ fn spawn_argv(argv: Vec<String>, req: &Req) -> Value {
 /// Best-effort write into a fresh agent's TTY; failures don't fail the spawn.
 fn inject(a: &std::sync::Arc<registry::Agent>, text: &str) {
     if let Some(mut w) = crate::registry::lock(&a.writer).take() {
-        let _ = w.write_all(text.as_bytes()).and_then(|_| w.flush());
+        let wrote = w.write_all(text.as_bytes()).and_then(|_| w.flush()).is_ok();
         *crate::registry::lock(&a.writer) = Some(w);
+        if wrote {
+            *crate::registry::lock(&a.last_input) = Some(Instant::now());
+        }
     }
 }
 
@@ -537,7 +673,12 @@ fn send(req: &Req) -> Value {
         None => return json!({"ok": false, "err": "agent has no pty writer"}),
     };
     let r = match w.write_all(text.as_bytes()).and_then(|_| w.flush()) {
-        Ok(()) => json!({"ok": true, "id": a.id, "bytes": text.len()}),
+        Ok(()) => {
+            // Liveness baseline: the UI compares this instant with the next
+            // PTY byte to distinguish "working" from "received input, silent".
+            *crate::registry::lock(&a.last_input) = Some(Instant::now());
+            json!({"ok": true, "id": a.id, "bytes": text.len()})
+        }
         Err(e) => json!({"ok": false, "err": format!("write: {e}")}),
     };
     *crate::registry::lock(&a.writer) = Some(w); // take_writer is once-only; put it back
@@ -587,8 +728,18 @@ fn wait(req: &Req) -> Value {
         let (alive, code) = status(&a);
         if alive {
             if !want_exit {
-                let last = *crate::registry::lock(&a.last_output);
-                if let Some(t) = last
+                let last_in = *crate::registry::lock(&a.last_input);
+                let last_out = *crate::registry::lock(&a.last_output);
+                // A pending task means input was written after the last byte.
+                // In that state "quiet for idle_ms" is not idleness, it is
+                // silence: only output after the write can prove progress.
+                let answered = match (last_in, last_out) {
+                    (Some(i), Some(o)) => o >= i,
+                    (Some(_), None) => false,
+                    (None, _) => true,
+                };
+                if answered
+                    && let Some(t) = last_out
                     && t.elapsed() >= Duration::from_millis(idle_ms) {
                         return json!({"ok": true, "idle": true});
                     }
@@ -622,6 +773,22 @@ fn kill(req: &Req) -> Value {
     a.killed.store(true, std::sync::atomic::Ordering::SeqCst);
     *crate::registry::lock(&a.exit_code) = Some(-9);
     json!({"ok": true, "id": a.id})
+}
+
+fn forget(req: &Req) -> Value {
+    let a = match resolved(req) {
+        Ok(a) => a,
+        Err(e) => return json!({"ok": false, "err": e}),
+    };
+    // Forgetting a live agent would orphan its PTY and hide it from the UI.
+    // Kill is the only way out; forget only prunes dead registry records.
+    if a.alive.load(std::sync::atomic::Ordering::SeqCst) {
+        return json!({"ok": false, "err": format!("agent {} still alive — kill it first", a.id)});
+    }
+    let mut reg = crate::registry::lock(&crate::registry::REGISTRY);
+    let before = reg.len();
+    reg.retain(|x| x.id != a.id);
+    json!({"ok": true, "forgot": a.id, "removed": before.saturating_sub(reg.len())})
 }
 
 fn lessons_cmd(req: &Req) -> Value {

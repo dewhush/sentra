@@ -21,6 +21,10 @@ pub struct Agent {
     pub killed: AtomicBool,
     pub exit_code: Mutex<Option<i32>>,
     pub last_output: Mutex<Option<Instant>>,
+    /// Last byte we wrote into the PTY (user keystroke, brief, handoff, …).
+    /// Paired with `last_output` so the UI can tell "agent is thinking" from
+    /// "agent received input and produced nothing since".
+    pub last_input: Mutex<Option<Instant>>,
     pub ring: Mutex<VecDeque<u8>>,
     pub subs: Mutex<Vec<(bool, Sender<serde_json::Value>)>>,
     pub master: Mutex<Option<Box<dyn MasterPty + Send>>>,
@@ -53,6 +57,13 @@ pub fn unique_name(reg: &[Arc<Agent>], base: &str) -> String {
     name
 }
 
+/// True when `bin` resolves on `$PATH` (the same lookup portable-pty does).
+fn on_path(bin: &str) -> bool {
+    std::env::var_os("PATH")
+        .map(|p| std::env::split_paths(&p).any(|d| d.join(bin).is_file()))
+        .unwrap_or(false)
+}
+
 pub fn spawn(
     name: Option<&str>,
     argv: Vec<String>,
@@ -60,6 +71,12 @@ pub fn spawn(
 ) -> Result<Arc<Agent>, String> {
     if argv.is_empty() {
         return Err("spawn: no argv".into());
+    }
+    // portable-pty's not-found error embeds the entire $PATH (~1 KB), which
+    // the UI can only clip. Fail early with the one useful fact. A path with a
+    // slash is left to portable-pty, which resolves it against the child cwd.
+    if !argv[0].contains('/') && !on_path(&argv[0]) {
+        return Err(format!("{}: not found on $PATH", argv[0]));
     }
     let pty = native_pty_system()
         .openpty(PtySize { rows: 30, cols: 120, ..Default::default() })
@@ -94,6 +111,7 @@ pub fn spawn(
             killed: AtomicBool::new(false),
             exit_code: Mutex::new(None),
             last_output: Mutex::new(None),
+            last_input: Mutex::new(None),
             ring: Mutex::new(VecDeque::with_capacity(8192)),
             subs: Mutex::new(Vec::new()),
             master: Mutex::new(Some(pty.master)),
@@ -168,5 +186,8 @@ fn reader_loop(agent: Arc<Agent>, mut reader: Box<dyn Read + Send>) {
         ec.unwrap_or(-1)
     };
     lock(&agent.master).take(); // drop master so daemon can free fds
+    if code != 0 {
+        fanout(&agent, json!({"evt":"error","id":agent.id,"name":agent.name,"code":code,"msg":format!("agent {} exited with status {}", agent.name, code)}));
+    }
     fanout(&agent, json!({"evt":"exit","id":agent.id,"code":code}));
 }

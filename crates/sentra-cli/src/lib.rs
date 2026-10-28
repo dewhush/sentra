@@ -86,7 +86,7 @@ fn cmd(args: &[String]) -> Result<(), String> {
     let json = args.iter().any(|a| a == "--json");
     let verb = args
         .first()
-        .ok_or("usage: sentra <spawn|list|send|wait|read|resize|kill|presets|profiles|lessons|research> [args] [--json]")?;
+        .ok_or("usage: sentra <spawn|list|send|wait|read|resize|kill|forget|presets|profiles|lessons|research> [args] [--json]")?;
     let rest: Vec<&String> = args[1..].iter().filter(|a| a.as_str() != "--json").collect();
 
     if verb == "presets" {
@@ -107,6 +107,7 @@ fn cmd(args: &[String]) -> Result<(), String> {
         "send" => build_send(&rest)?,
         "resize" => build_resize(&rest)?,
         "kill" => build_kill(&rest)?,
+        "forget" => build_forget(&rest)?,
         other => return Err(format!("unknown verb `{other}`")),
     };
 
@@ -142,6 +143,7 @@ fn friendly(verb: &str, resp: &Value) {
             }
         }
         "read" => print!("{}", resp["chunk"].as_str().unwrap_or("")),
+        "forget" => println!("forgot agent {}", resp["forgot"]),
         "wait" => {
             if resp.get("idle") == Some(&json!(true)) {
                 println!("idle");
@@ -276,6 +278,11 @@ fn build_send(rest: &[&String]) -> Result<Value, String> {
 fn build_kill(rest: &[&String]) -> Result<Value, String> {
     let t = target(rest)?;
     Ok(json!({"cmd":"kill","id":t}))
+}
+
+fn build_forget(rest: &[&String]) -> Result<Value, String> {
+    let t = target(rest)?;
+    Ok(json!({"cmd":"forget","id":t}))
 }
 
 fn build_resize(rest: &[&String]) -> Result<Value, String> {

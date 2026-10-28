@@ -3,8 +3,21 @@ fn main() {
     match args.first().map(String::as_str) {
         Some("serve") => {
             let with_ui = args.iter().any(|a| a == "--with-ui");
+            if let Some(pos) = args.iter().position(|a| a == "--port" || a == "-p") {
+                if let Some(port) = args.get(pos + 1) {
+                    unsafe { std::env::set_var("SENTRA_TCP", format!("127.0.0.1:{port}")); }
+                }
+            } else if let Some(pos) = args.iter().position(|a| a == "--addr") {
+                if let Some(addr) = args.get(pos + 1) {
+                    unsafe { std::env::set_var("SENTRA_TCP", addr); }
+                }
+            }
             if with_ui {
                 serve_with_ui();
+                if daemon_alive() {
+                    eprintln!("sentra: daemon already running — UI attached, not starting a second daemon");
+                    return;
+                }
             }
             if let Err(e) = sentra_daemon::serve() {
                 eprintln!("sentra: {e}");
@@ -15,7 +28,8 @@ fn main() {
     }
 }
 
-/// `sentra serve --with-ui`: spawn the UI child (no-op if missing or already up).
+/// `sentra serve --with-ui`: spawn the UI child, then let `serve()` decide whether
+/// this process is the daemon. A second launch only attaches the UI.
 fn serve_with_ui() {
     let ui = std::env::current_exe()
         .ok()
@@ -25,9 +39,19 @@ fn serve_with_ui() {
         eprintln!("sentra: --with-ui: sentra-ui binary not found next to `sentra`");
         return;
     };
-    // UI connects asynchronously; if another daemon already owns the socket the
-    // bind below errors out and this child gets killed as our child process.
     let _ = std::process::Command::new(ui)
         .env("DISPLAY", std::env::var("DISPLAY").unwrap_or_else(|_| ":0".into()))
         .spawn();
+}
+
+/// Is a daemon already answering on the configured web port?
+fn daemon_alive() -> bool {
+    use std::net::{TcpStream, ToSocketAddrs};
+    use std::time::Duration;
+    let addr = std::env::var("SENTRA_TCP").unwrap_or_else(|_| "127.0.0.1:7621".into());
+    addr.to_socket_addrs()
+        .ok()
+        .and_then(|mut it| it.next())
+        .map(|sa| TcpStream::connect_timeout(&sa, Duration::from_millis(250)).is_ok())
+        .unwrap_or(false)
 }
