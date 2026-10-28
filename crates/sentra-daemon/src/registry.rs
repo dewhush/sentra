@@ -76,29 +76,33 @@ pub fn spawn(
     let reader = pty.master.try_clone_reader().map_err(|e| e.to_string())?;
     let writer = pty.master.take_writer().map_err(|e| e.to_string())?;
 
+    // allocate id/name and push under ONE lock hold: dropping between compute and
+    // push let concurrent spawns mint duplicate ids (seen under 25-way storm).
     let name0 = argv[0].clone();
-    let reg = lock(&REGISTRY);
-    let id = next_id(&reg);
-    let aname = unique_name(&reg, name.unwrap_or(name0.as_str()));
-    drop(reg);
-    let agent = Arc::new(Agent {
-        id,
-        name: aname,
-        role: std::sync::Mutex::new(None),
-        argv,
-        cwd,
-        pid,
-        alive: AtomicBool::new(true),
-        killed: AtomicBool::new(false),
-        exit_code: Mutex::new(None),
-        last_output: Mutex::new(None),
-        ring: Mutex::new(VecDeque::with_capacity(8192)),
-        subs: Mutex::new(Vec::new()),
-        master: Mutex::new(Some(pty.master)),
-        writer: Mutex::new(Some(writer)),
-        child: Mutex::new(Some(child)),
-    });
-    lock(&REGISTRY).push(agent.clone());
+    let agent = {
+        let mut reg = lock(&REGISTRY);
+        let id = next_id(&reg);
+        let aname = unique_name(&reg, name.unwrap_or(name0.as_str()));
+        let a = Arc::new(Agent {
+            id,
+            name: aname,
+            role: std::sync::Mutex::new(None),
+            argv,
+            cwd,
+            pid,
+            alive: AtomicBool::new(true),
+            killed: AtomicBool::new(false),
+            exit_code: Mutex::new(None),
+            last_output: Mutex::new(None),
+            ring: Mutex::new(VecDeque::with_capacity(8192)),
+            subs: Mutex::new(Vec::new()),
+            master: Mutex::new(Some(pty.master)),
+            writer: Mutex::new(Some(writer)),
+            child: Mutex::new(Some(child)),
+        });
+        reg.push(a.clone());
+        a
+    };
     let agent2 = agent.clone();
     std::thread::Builder::new()
         .name(format!("agent-{}", agent.id))

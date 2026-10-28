@@ -112,6 +112,7 @@ fn http_conn(mut s: std::net::TcpStream) -> Result<(), String> {
         ("GET", "/xterm.css") => http_static(s, "vendor/xterm.css"),
         ("GET", p) if p.starts_with("/vendor/") => http_static(s, &p[1..]),
         ("GET", p) if p.starts_with("/fonts/") => http_static(s, &p[1..]),
+        ("GET", p) if p.starts_with("/icons/") => http_static(s, &p[1..]),
         ("GET", "/events") => sse_conn(s),
         ("POST", "/api") => {
             let mut body = vec![0u8; len];
@@ -373,6 +374,7 @@ fn list() -> Value {
                 "alive": alive,
                 "exit_code": exit_code,
                 "last_output_age_ms": registry_last_output_ms(a).unwrap_or(u64::MAX),
+                "rss_kb": agent_rss_kb(a.pid),
             })
         })
         .collect();
@@ -389,6 +391,12 @@ fn status(a: &Agent) -> (bool, Option<i32>) {
 fn registry_last_output_ms(a: &Agent) -> Option<u64> {
     registry::lock(&a.last_output)
         .map(|t| u64::try_from(t.elapsed().as_millis()).unwrap_or(u64::MAX))
+}
+fn agent_rss_kb(pid: u32) -> Option<u64> {
+    // statm: size resident shared text lib data dt (pages); RSS = 2nd field. 4K pages.
+    let s = std::fs::read_to_string(format!("/proc/{pid}/statm")).ok()?;
+    let pages: u64 = s.split_whitespace().nth(1)?.parse().ok()?;
+    Some(pages * 4)
 }
 fn json_str(v: &Value) -> String {
     match v {
@@ -585,10 +593,17 @@ fn kill(req: &Req) -> Value {
         Ok(a) => a,
         Err(e) => return json!({"ok": false, "err": e}),
     };
-    if !a.alive.load(std::sync::atomic::Ordering::SeqCst) {
-        return json!({"ok": false, "err": format!("agent {}: already dead", a.id)});
+    // stale-flag safe: attempt kill even if a reader race left alive=true; and if
+    // SIGKILL fired, the process IS dying — reflect that immediately so list() can't
+    // report a live pid we just killed.
+    let rc = unsafe { libc::kill(a.pid as libc::pid_t, libc::SIGKILL) };
+    if rc != 0 {
+        let e = std::io::Error::last_os_error();
+        if e.kind() != std::io::ErrorKind::NotFound {
+            return json!({"ok": false, "err": format!("kill {}: {e}", a.pid)});
+        } // ESRCH = already reaped; fall through to mark dead
     }
-    let _rc = unsafe { libc::kill(a.pid as libc::pid_t, libc::SIGKILL) };
+    a.alive.store(false, std::sync::atomic::Ordering::SeqCst);
     a.killed.store(true, std::sync::atomic::Ordering::SeqCst);
     *crate::registry::lock(&a.exit_code) = Some(-9);
     json!({"ok": true, "id": a.id})

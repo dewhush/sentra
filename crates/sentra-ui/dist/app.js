@@ -54,6 +54,13 @@ if (USE_TAURI) window.__TAURI__.event.listen('sentra-line', (e) => onLine(e.payl
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
+const ICON = { claude: '/icons/claude.svg', omp: '/icons/omp.svg', codex: '/icons/codex.svg', hermes: '/icons/hermes.svg', bash: '/icons/bash.svg', openai: '/icons/openai.svg' };
+function iconFor(name) {
+  const s = String(name || '').toLowerCase();
+  for (const [k, v] of Object.entries(ICON)) if (s.includes(k)) return v;
+  return '/icons/bash.svg';
+}
+const PICON = (name) => `<img class="picon" src="${iconFor(name)}" alt="" data-preset="${esc(name)}" onerror="this.remove()">`;
 async function main() {
   if (USE_TAURI) await window.__TAURI__.core.invoke('connect');
   else { const es = new EventSource('/events'); es.onmessage = (e) => onLine(e.data); }
@@ -112,6 +119,7 @@ async function main() {
     launchHarness(parseHarness($('hinput').value));
   });
   for (const b of document.querySelectorAll('.h-chips button[data-p]')) {
+    b.innerHTML = PICON(b.dataset.p) + esc(b.dataset.p);
     b.onclick = () => launchHarness([{ preset: b.dataset.p, task: '' }]);
   }
   const pendingHarness = sessionStorage.getItem('sentra-harness');
@@ -142,7 +150,7 @@ async function main() {
   $('thmbtn').onclick = () => applyTheme(!htmlEl.classList.contains('dark'));
   const savedTheme = localStorage.getItem('sentra-theme');
   applyTheme(savedTheme ? savedTheme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches);
-  $('setbtn').onclick = () => { appEl.hidden = false; $('cmd').focus(); };
+  $('setbtn').onclick = () => { openSettings(); };
 
   // ===== roster: grouped by workspace cwd =====
   const collapsed = new Map(); // cwd -> bool
@@ -151,6 +159,7 @@ async function main() {
     const row = document.createElement('div');
     row.className = 'row' + (state.focus === a.id ? ' active' : '');
     row.innerHTML = `<span class="dot ${a.alive ? 'live' : 'dead'}"></span>` +
+      PICON(a.name) +
       `<span class="rname">${esc(a.name)}</span>` +
       (a.role ? `<span class="role">${esc(a.role)}</span>` : '') +
       `<span class="argv">${esc(a.argv.join(' '))}</span>` +
@@ -163,13 +172,15 @@ async function main() {
   function syncEmpty() {
     const es = $('empty-state');
     if (!es) return;
-    es.classList.toggle('hidden', state.agents.size > 0);
-    gridEl.classList.toggle('es', state.agents.size === 0);
+    const visible = [...state.agents.values()].filter((a) => a.alive || state.panes.has(a.id)).length;
+    es.classList.toggle('hidden', visible > 0);
+    gridEl.classList.toggle('es', visible === 0);
   }
   function renderRoster() {
     rm.innerHTML = '';
     const groups = new Map();
     for (const a of state.agents.values()) {
+      if (!a.alive && !state.panes.has(a.id)) continue; // temp-bash history stays out of sidebar
       const cwd = a.cwd || '?';
       if (!groups.has(cwd)) groups.set(cwd, []);
       groups.get(cwd).push(a);
@@ -197,15 +208,25 @@ async function main() {
       }
       rm.appendChild(block);
     }
-    if (!state.agents.size) rm.innerHTML = '<div class="row" style="color:var(--muted)">no agents - spawn below</div>';
+    const vis = [...state.agents.values()].filter((a) => a.alive || state.panes.has(a.id));
+    if (!vis.length) rm.innerHTML = '<div class="row" style="color:var(--muted)">no agents - spawn below</div>';
     syncEmpty();
-    const live = [...state.agents.values()].filter((a) => a.alive).length;
+    const live = vis.filter((a) => a.alive).length;
     const foc = state.focus != null ? state.agents.get(state.focus) : null;
     const cwdShow = (foc && foc.cwd) || cwds.find((c) => c !== '?') || '/';
-    { const f = $('es-foot'); if (f && state.agents.size === 0) f.textContent = `PROJECT: ${cwdShow} · DAEMON RUNNING`; }
-    $('tstat').textContent = `${live}/${state.agents.size} LIVE · ${cwdShow}`;
+    { const f = $('es-foot'); if (f && !vis.length) f.textContent = `PROJECT: ${cwdShow} · DAEMON RUNNING`; }
+    $('tstat').textContent = `${live}/${vis.length} LIVE · ${cwdShow}`;
   }
-  // ponytail: telemetry chips (tokens/RSS/cost) skipped — daemon list payload lacks them; add when daemon exposes per-agent rss/cost.
+  function updatePaneTelemetry() {
+    for (const [id, rec] of state.panes) {
+      const a = state.agents.get(id);
+      const chip = rec.el.querySelector('.chip-rss');
+      if (!a || !a.alive || a.rss_kb == null) { if (chip) chip.remove(); continue; }
+      const txt = Math.round(a.rss_kb / 1024) + 'MB';
+      if (chip) chip.textContent = txt;
+      else rec.el.querySelector('.gname').insertAdjacentHTML('afterend', `<span class="chip chip-rss" title="resident memory">${txt}</span>`);
+    }
+  }
 
   // ===== panes =====
   const gridEl = $('grid');
@@ -215,7 +236,9 @@ async function main() {
     pane.className = 'gpane';
     const a = state.agents.get(id) || {};
     pane.innerHTML = `<div class="gtitle"><span class="dot live"></span>` +
+      PICON(a.name || presetName) +
       `<span class="gname">${esc(a.name || presetName || ('agent ' + id))}</span>` +
+      (a.rss_kb != null ? `<span class="chip chip-rss" title="resident memory">${Math.round(a.rss_kb / 1024)}MB</span>` : '') +
       `<span class="gargv">${esc((a.argv || []).join(' '))}</span>` +
       `<span class="gkill" title="kill (ctrl-shift-W)">✕</span></div>` +
       `<div class="gdead"></div><div class="gterm"></div>`;
@@ -276,9 +299,9 @@ async function main() {
     state.agents.clear();
     for (const a of r.agents) state.agents.set(a.id, a);
     renderRoster();
+    updatePaneTelemetry();
   }
 
-  // spawn: bare word = preset name, otherwise argv split on spaces
   async function spawnCmd(argvOrPreset) {
     const s = (argvOrPreset || '').trim();
     if (!s) return { ok: false, err: 'empty' };
@@ -325,13 +348,13 @@ async function main() {
     // sidebar preset chips
     const rc = document.createElement('div');
     rc.className = 'row preset-row';
-    rc.innerHTML = `<span class="pchip">+</span><span class="rname">@${esc(p)}</span>`;
+    rc.innerHTML = PICON(p) + `<span class="pchip">+</span><span class="rname">@${esc(p)}</span>`;
     rc.onclick = () => spawnUi(p);
     $('roster-presets').appendChild(rc);
     // cmdbar chips
     const c = document.createElement('div');
     c.className = 'chip';
-    c.textContent = p;
+    c.innerHTML = PICON(p) + esc(p);
     c.onclick = () => spawnUi(p);
     $('chips').appendChild(c);
   }
@@ -381,7 +404,7 @@ async function main() {
       if (a) { a.alive = false; a.exit_code = evt.code; }
       const rec = state.panes.get(evt.id);
       if (rec) { rec.el.classList.add('dead'); rec.el.querySelector('.gdead').textContent = `agent ${evt.name ?? ''} exited (code ${evt.code})`; }
-      renderRoster();
+      renderRoster(); updatePaneTelemetry();
       showSuggest(evt.id, evt.code);
       return;
     }
@@ -400,7 +423,7 @@ async function main() {
   harnessEl.hidden = true; appEl.hidden = false;
   renderRoster();
   // auto-open panes for existing agents (UI restart mid-flight)
-  for (const id of [...state.agents.keys()].sort((a, b) => a - b).slice(0, 4)) await openPane(id);
+  for (const a of [...state.agents.values()].filter((x) => x.alive).sort((x, y) => x.id - y.id).slice(0, 4)) await openPane(a.id);
 
   // handoff rail card (right column): shows last send→wait→read flow summary
   const railCard = $('handrail-card'), hcFlow = $('hc-flow');
@@ -487,10 +510,64 @@ async function main() {
     }
     if (e.key === 'Escape' && !$('switcher').classList.contains('hidden')) { swClose(); return; }
     if (!$('handoff').classList.contains('hidden')) {
-      if (e.key === 'Escape') closeHandoff();
+      if (e.key === 'Escape') { closeHandoff(); return; }
       if (e.ctrlKey && e.shiftKey && e.key === 'Enter') { e.preventDefault(); sendHandoff(); }
+      return;
     }
+    if (!$('settings').classList.contains('hidden') && e.key === 'Escape') { closeSettings(); return; }
   });
+  // ===== settings modal =====
+  function openSettings() {
+    renderSetPresets();
+    syncSetTheme();
+    $('settings').classList.remove('hidden');
+  }
+  function closeSettings() { $('settings').classList.add('hidden'); }
+  function syncSetTheme() {
+    $('set-theme').textContent = htmlEl.classList.contains('dark') ? 'DARK' : 'LIGHT';
+  }
+  function renderSetPresets() {
+    const el = $('set-presets');
+    el.innerHTML = '';
+    const profs = state.profiles || {};
+    for (const p of presets) {
+      const pr = profs[p] || {};
+      const row = document.createElement('div');
+      row.className = 'set-row';
+      row.innerHTML = PICON(p) +
+        `<span class="set-name">@${esc(p)}</span>` +
+        `<span class="set-sub">${esc(pr.role || pr.preset || 'preset')}</span>` +
+        `<button class="mo-btn set-spawn" data-p="${esc(p)}" type="button">SPAWN</button>`;
+      el.appendChild(row);
+    }
+    for (const [name, pr] of Object.entries(profs)) {
+      if (presets.includes(name)) continue;
+      const row = document.createElement('div');
+      row.className = 'set-row';
+      row.innerHTML = PICON(name) +
+        `<span class="set-name">@${esc(name)}</span>` +
+        `<span class="set-sub">${esc(pr.role || pr.preset || 'profile')}</span>` +
+        `<button class="mo-btn set-spawn" data-p="@${esc(name)}" type="button">SPAWN</button>`;
+      el.appendChild(row);
+    }
+  }
+  $('set-close').onclick = closeSettings;
+  $('set-done').onclick = closeSettings;
+  $('set-theme').onclick = () => { applyTheme(!htmlEl.classList.contains('dark')); syncSetTheme(); };
+  for (const t of document.querySelectorAll('.mo-tab')) {
+    t.onclick = () => {
+      for (const x of document.querySelectorAll('.mo-tab')) x.classList.toggle('active', x === t);
+      for (const p of document.querySelectorAll('.mo-body')) p.classList.toggle('hidden', p.dataset.panel !== t.dataset.tab);
+    };
+  }
+  $('set-presets').addEventListener('click', async (e) => {
+    const b = e.target.closest('.set-spawn');
+    if (!b) return;
+    closeSettings();
+    await spawnUi(b.dataset.p);
+  });
+  rpc({ cmd: 'profiles' }).then((r) => { if (r && r.ok) state.profiles = r.profiles || {}; }).catch(() => {});
+
 
   // ===== quick switcher (⌘O / Ctrl+O) =====
   const swEl = $('switcher'), swInput = $('sw-input'), swList = $('sw-list');
@@ -550,6 +627,7 @@ async function main() {
     hideSuggest();
   });
   for (const b of document.querySelectorAll('.es-chips button[data-p]')) {
+    b.innerHTML = PICON(b.dataset.p) + esc(b.dataset.p);
     b.onclick = () => launchHarness([{ preset: b.dataset.p, task: '' }]);
   }
   window.__sentra = { killFocused, spawnUi, focusPane, state, sendHandoff, openHandoff };

@@ -88,6 +88,14 @@
 </main>
 
 <!-- quick switcher overlay -->
+<!-- settings modal -->
+<div id="settings" class="modal hidden"><div class="mo-box">
+  <div class="mo-head"><span class="mo-title">SENTRA PREFERENCES</span><button id="set-close" class="mo-x" type="button">✕</button></div>
+  <div class="mo-tabs"><button class="mo-tab active" data-tab="presets" type="button">PRESETS</button><button class="mo-tab" data-tab="appearance" type="button">APPEARANCE</button></div>
+  <div class="mo-body" data-panel="presets"><div class="mo-sec">CONFIGURED AGENTS (~/.config/senta presets — read-only list)</div><div id="set-presets"></div></div>
+  <div class="mo-body hidden" data-panel="appearance"><div class="mo-row">THEME <button id="set-theme" type="button" class="tb-btn">DARK</button></div></div>
+  <div class="mo-foot"><button id="set-done" type="button" class="mo-btn primary">DONE</button></div>
+</div></div>
 <div id="switcher" class="hidden">
  <div class="sw-box">
  <input id="sw-input" autocomplete="off" spellcheck="false" placeholder="Jump to folder or preset&hellip;">
