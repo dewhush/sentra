@@ -21,6 +21,8 @@ set -e
 mkdir -p ~/.config/sentra ~/.config/systemd/user ~/.local/bin
 [ -f ~/.config/sentra/presets.json ] || printf '{ "hermes": ["hermes"], "omp": ["omp"], "claude": ["claude"], "codex": ["codex"], "bash": ["bash"] }\n' > ~/.config/sentra/presets.json
 cp ~/code/sentra/target/release/sentra ~/.local/bin/sentra
+mkdir -p ~/.local/share/sentra
+cp -r ~/code/sentra/crates/sentra-ui/dist ~/.local/share/sentra/dist
 # TCP bind on the tailscale interface only.
 TSIP="$(tailscale ip -4 2>/dev/null || true)"
 BIND="${TSIP:-127.0.0.1}:7621"
@@ -31,7 +33,7 @@ Description=sentra orchestrator daemon (headless)
 [Service]
 ExecStart=%h/.local/bin/sentra serve
 Environment=SENTRA_TCP=$BIND
-Environment=SENTRA_WEB=%h/code/sentra/web
+Environment=SENTRA_WEB=%h/.local/share/sentra/dist
 Restart=always
 RestartSec=2
 

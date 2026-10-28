@@ -135,7 +135,22 @@ fn http_conn(mut s: std::net::TcpStream) -> Result<(), String> {
 }
 
 fn web_dist() -> std::path::PathBuf {
-    std::env::var("SENTRA_WEB").map(Into::into).unwrap_or_else(|_| "crates/sentra-ui/dist".into())
+    if let Ok(w) = std::env::var("SENTRA_WEB") {
+        return w.into();
+    }
+    // cwd-relative default only works when launched from the repo; fall back to
+    // the dist shipped next to the binary so `sentra serve` works from anywhere.
+    let rel = std::path::Path::new("crates/sentra-ui/dist");
+    if rel.is_dir() {
+        return rel.into();
+    }
+    std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().and_then(|d| d.parent()).map(|d| d.join("share/sentra/dist")))
+        .filter(|p| p.is_dir())
+        // ponytail: XDG data dir assumed at $HOME/.local/share; add env override when packaging
+        .or_else(|| std::env::var("HOME").ok().map(|h| std::path::PathBuf::from(h).join(".local/share/sentra/dist")).filter(|p| p.is_dir()))
+        .unwrap_or_else(|| rel.into())
 }
 
 fn http_static(mut s: std::net::TcpStream, rel: &str) -> Result<(), String> {
