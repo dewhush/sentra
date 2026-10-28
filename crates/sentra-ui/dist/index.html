@@ -29,21 +29,42 @@
 
 <!-- main app -->
 <div id="topbar" class="topbar">
- <div class="tb-left"><img src="logo.svg" alt="" class="tb-logo"><span class="tb-word">SENTRA</span><span class="tb-sub">orchestrator</span></div>
+ <div class="tb-left"><img src="logo.svg" alt="" class="tb-logo"><span class="tb-word">SENTRA</span><span class="tb-sub">many terminals, <em>one window</em></span></div>
  <div class="tb-right" id="tstat"></div>
+ <button type="button" id="thmbtn" class="tb-btn" title="toggle theme">&#9680;</button>
+ <button type="button" id="setbtn" class="tb-btn">SETTINGS</button>
 </div>
 
 <main id="app" hidden>
  <section id="main">
  <aside id="roster">
- <div class="roster-title" id="rt-title">AGENTS</div>
+ <div class="roster-title" id="rt-title">WORKSPACE FOLDERS</div>
  <div id="roster-rows"></div>
  <div class="roster-sub">PRESETS</div>
  <div id="roster-presets"></div>
- <div class="roster-hint">Enter = spawn preset<br>free text = raw argv</div>
+ <button type="button" id="sw-open" class="roster-footbtn">+ SWITCH FOLDER <kbd>&#8984;O</kbd></button>
+ <div class="roster-hint"><kbd>CTRL-SHIFT-&uarr;</kbd> split &middot; <kbd>CTRL-SHIFT-W</kbd> kill &middot; <kbd>CTRL-TAB</kbd> cycle &middot; <kbd>R-CLICK</kbd> send to...</div>
  </aside>
  <div id="panes-wrap">
  <div id="grid"></div>
+ <section id="empty-state" class="hidden">
+  <div class="es-card">
+  <h2>No agents in this workspace</h2>
+  <p class="es-sub">Spawn a preset, or type raw argv below.</p>
+  <form id="es-form">
+   <span class="es-at">@</span><input id="es-input" autocomplete="off" spellcheck="false" placeholder="@claude handle ui &middot; or: bash htop">
+   <button id="es-spawn" type="submit">SPAWN &#8629;</button>
+  </form>
+  <div class="es-chips">
+   <button type="button" data-p="hermes">@hermes</button>
+   <button type="button" data-p="omp">@omp</button>
+   <button type="button" data-p="claude">@claude</button>
+   <button type="button" data-p="codex">@codex</button>
+   <button type="button" data-p="bash">@bash</button>
+  </div>
+  <div class="es-foot">PROJECT: / &middot; DAEMON RUNNING</div>
+  </div>
+ </section>
  <div id="handrail" class="hidden"><span class="hr-dot"></span><span id="hr-text"></span></div>
  <div id="suggest" hidden></div>
  </div>
@@ -64,7 +85,15 @@
  <span><kbd>R-CLICK</kbd> send to...</span>
  </div>
  </section>
- </main>
+</main>
+
+<!-- quick switcher overlay -->
+<div id="switcher" class="hidden">
+ <div class="sw-box">
+ <input id="sw-input" autocomplete="off" spellcheck="false" placeholder="Jump to folder or preset&hellip;">
+ <div id="sw-list"></div>
+ </div>
+</div>
 
 <!-- handoff dialog -->
 <div id="handoff" class="hidden">
@@ -73,8 +102,8 @@
  <select id="ho-target"></select>
  <textarea id="ho-msg" rows="4"></textarea>
  <div class="ho-actions">
- <button type="button" id="ho-cancel">Cancel</button>
- <button type="button" id="ho-send" class="primary">Send</button>
+  <button type="button" id="ho-cancel">Cancel</button>
+  <button type="button" id="ho-send" class="primary">Send</button>
  </div>
  <div id="ho-status"></div>
  </div>

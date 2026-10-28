@@ -11,6 +11,14 @@ const XTERM_LIGHT = {
   brightBlack: '#73737c', brightRed: '#e05252', brightGreen: '#22863a', brightYellow: '#b08800',
   brightBlue: '#4c94ff', brightMagenta: '#bc4cba', brightCyan: '#189aa9', brightWhite: '#101014',
 };
+const XTERM_DARK = {
+  background: '#17171C', foreground: '#F2F1EE', cursor: '#2D81FF', cursorAccent: '#101014',
+  selectionBackground: '#2D81FF44',
+  black: '#101014', red: '#F87171', green: '#32D583', yellow: '#FDB022',
+  blue: '#2D81FF', magenta: '#B692F6', cyan: '#53B1FD', white: '#B9B9C2',
+  brightBlack: '#858D9D', brightRed: '#F87171', brightGreen: '#32D583', brightYellow: '#FDB022',
+  brightBlue: '#53B1FD', brightMagenta: '#B692F6', brightCyan: '#53B1FD', brightWhite: '#F2F1EE',
+};
 
 let seq = 1;
 const pending = new Map();      // reqId -> {resolve, reject}
@@ -123,27 +131,81 @@ async function main() {
     }
   })();
 
-  // ===== roster =====
-  function renderRoster() {
-    const rows = $('roster-rows');
-    rows.innerHTML = '';
-    for (const a of [...state.agents.values()].sort((x, y) => x.id - y.id)) {
-      const row = document.createElement('div');
-      row.className = 'row' + (state.focus === a.id ? ' active' : '');
-      row.innerHTML = `<span class="dot ${a.alive ? 'live' : 'dead'}"></span>` +
-        `<span class="rname">${esc(a.name)}</span>` +
-        (a.role ? `<span class="role">${esc(a.role)}</span>` : '') +
-        `<span class="argv">${esc(a.argv.join(' '))}</span>` +
-        `<span class="rid">#${a.id}</span>`;
-      row.onclick = () => focusPane(a.id);
-      row.oncontextmenu = (e) => { e.preventDefault(); openHandoff(a.id); };
-      row.onauxclick = (e) => { if (e.button === 2) { e.preventDefault(); openHandoff(a.id); } };
-      rows.appendChild(row);
-    }
-    if (!state.agents.size) rows.innerHTML = '<div class="row" style="color:var(--muted)">no agents - spawn below</div>';
-    const live = [...state.agents.values()].filter((a) => a.alive).length;
-    $('tstat').textContent = `${live}/${state.agents.size} live`;
+  // theme
+  const rm = $('roster-rows');
+  const htmlEl = document.documentElement;
+  function applyTheme(dark) {
+    htmlEl.classList.toggle('dark', dark);
+    localStorage.setItem('sentra-theme', dark ? 'dark' : 'light');
+    for (const p of state.panes.values()) { try { p.term.option('theme', dark ? XTERM_DARK : XTERM_LIGHT); } catch {} }
   }
+  $('thmbtn').onclick = () => applyTheme(!htmlEl.classList.contains('dark'));
+  const savedTheme = localStorage.getItem('sentra-theme');
+  applyTheme(savedTheme ? savedTheme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches);
+  $('setbtn').onclick = () => { appEl.hidden = false; $('cmd').focus(); };
+
+  // ===== roster: grouped by workspace cwd =====
+  const collapsed = new Map(); // cwd -> bool
+  const base = (p) => p.replace(/\/+$/, '').split('/').pop() || p || '?';
+  function agentRow(a) {
+    const row = document.createElement('div');
+    row.className = 'row' + (state.focus === a.id ? ' active' : '');
+    row.innerHTML = `<span class="dot ${a.alive ? 'live' : 'dead'}"></span>` +
+      `<span class="rname">${esc(a.name)}</span>` +
+      (a.role ? `<span class="role">${esc(a.role)}</span>` : '') +
+      `<span class="argv">${esc(a.argv.join(' '))}</span>` +
+      `<span class="rid">#${a.id}</span>`;
+    row.onclick = () => focusPane(a.id);
+    row.oncontextmenu = (e) => { e.preventDefault(); openHandoff(a.id); };
+    row.onauxclick = (e) => { if (e.button === 2) { e.preventDefault(); openHandoff(a.id); } };
+    return row;
+  }
+  function syncEmpty() {
+    const es = $('empty-state');
+    if (!es) return;
+    es.classList.toggle('hidden', state.agents.size > 0);
+    gridEl.classList.toggle('es', state.agents.size === 0);
+  }
+  function renderRoster() {
+    rm.innerHTML = '';
+    const groups = new Map();
+    for (const a of state.agents.values()) {
+      const cwd = a.cwd || '?';
+      if (!groups.has(cwd)) groups.set(cwd, []);
+      groups.get(cwd).push(a);
+    }
+    const cwds = [...groups.keys()].sort((x, y) =>
+      ((x === '?' ? 1 : x.split('/').length) - (y === '?' ? 1 : y.split('/').length)) || x.localeCompare(y));
+    for (const cwd of cwds) {
+      const list = groups.get(cwd);
+      const block = document.createElement('div');
+      block.className = 'ws-block';
+      const head = document.createElement('div');
+      head.className = 'ws-head';
+      const liveN = list.filter((a) => a.alive).length;
+      head.innerHTML = `<span class="ws-caret">${collapsed.get(cwd) ? '▸' : '▾'}</span>` +
+        `<span class="ws-name">${esc(base(cwd))}</span>` +
+        `<span class="ws-path">${esc(cwd)}</span>` +
+        `<span class="ws-badge">${list.length} agentes · ${liveN} live</span>`;
+      head.onclick = () => { collapsed.set(cwd, !collapsed.get(cwd)); renderRoster(); };
+      block.appendChild(head);
+      if (!collapsed.get(cwd)) {
+        const wrap = document.createElement('div');
+        wrap.className = 'ws-agents';
+        for (const a of list.sort((x, y) => x.id - y.id)) wrap.appendChild(agentRow(a));
+        block.appendChild(wrap);
+      }
+      rm.appendChild(block);
+    }
+    if (!state.agents.size) rm.innerHTML = '<div class="row" style="color:var(--muted)">no agents - spawn below</div>';
+    syncEmpty();
+    const live = [...state.agents.values()].filter((a) => a.alive).length;
+    const foc = state.focus != null ? state.agents.get(state.focus) : null;
+    const cwdShow = (foc && foc.cwd) || cwds.find((c) => c !== '?') || '/';
+    { const f = $('es-foot'); if (f && state.agents.size === 0) f.textContent = `PROJECT: ${cwdShow} · DAEMON RUNNING`; }
+    $('tstat').textContent = `${live}/${state.agents.size} LIVE · ${cwdShow}`;
+  }
+  // ponytail: telemetry chips (tokens/RSS/cost) skipped — daemon list payload lacks them; add when daemon exposes per-agent rss/cost.
 
   // ===== panes =====
   const gridEl = $('grid');
@@ -158,7 +220,7 @@ async function main() {
       `<span class="gkill" title="kill (ctrl-shift-W)">✕</span></div>` +
       `<div class="gdead"></div><div class="gterm"></div>`;
     gridEl.appendChild(pane);
-    const term = new Terminal({ convertEol: false, cursorBlink: true, fontFamily: '"Geist Mono","JetBrains Mono",monospace', fontSize: 12.5, theme: XTERM_LIGHT });
+    const term = new Terminal({ convertEol: false, cursorBlink: true, fontFamily: '"Geist Mono","JetBrains Mono",monospace', fontSize: 12.5, theme: htmlEl.classList.contains('dark') ? XTERM_DARK : XTERM_LIGHT });
     const fit = new FitAddon();
     term.loadAddon(fit);
     term.open(pane.querySelector('.gterm'));
@@ -335,8 +397,8 @@ async function main() {
   // Rust pump already subscribed the watch conn to the global feed
   await refreshList();
   const anyAlive = [...state.agents.values()].some((a) => a.alive);
-  if (state.agents.size && anyAlive) { harnessEl.hidden = true; appEl.hidden = false; }
-  else { harnessEl.hidden = false; appEl.hidden = true; }
+  harnessEl.hidden = true; appEl.hidden = false;
+  renderRoster();
   // auto-open panes for existing agents (UI restart mid-flight)
   for (const id of [...state.agents.keys()].sort((a, b) => a - b).slice(0, 4)) await openPane(id);
 
@@ -418,12 +480,78 @@ async function main() {
   $('ho-cancel').onclick = closeHandoff;
   $('ho-send').onclick = sendHandoff;
   window.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'o') {
+      e.preventDefault();
+      if ($('switcher').classList.contains('hidden')) swOpen(); else swClose();
+      return;
+    }
+    if (e.key === 'Escape' && !$('switcher').classList.contains('hidden')) { swClose(); return; }
     if (!$('handoff').classList.contains('hidden')) {
       if (e.key === 'Escape') closeHandoff();
       if (e.ctrlKey && e.shiftKey && e.key === 'Enter') { e.preventDefault(); sendHandoff(); }
     }
   });
 
+  // ===== quick switcher (⌘O / Ctrl+O) =====
+  const swEl = $('switcher'), swInput = $('sw-input'), swList = $('sw-list');
+  let swRows = [], swSel = 0;
+  function swBuild(filter) {
+    swList.innerHTML = '';
+    const f = (filter || '').toLowerCase();
+    const cwds = [...new Set([...state.agents.values()].map((a) => a.cwd || '?'))]
+      .sort((x, y) => (x.split('/').length - y.split('/').length) || x.localeCompare(y));
+    swRows = [];
+    for (const cwd of cwds) {
+      const list = [...state.agents.values()].filter((a) => (a.cwd || '?') === cwd);
+      const live = list.filter((a) => a.alive).length;
+      swRows.push({ kind: 'ws', id: cwd, label: base(cwd), sub: cwd, badge: `${live}/${list.length} live` });
+    }
+    for (const p of presets) swRows.push({ kind: 'preset', id: p, label: '@' + p, sub: 'preset', badge: '' });
+    swRows = swRows.filter((r) => (r.label + ' ' + r.sub).toLowerCase().includes(f));
+    swSel = Math.min(swSel, Math.max(0, swRows.length - 1));
+    swRows.forEach((r, i) => {
+      const d = document.createElement('div');
+      d.className = 'sw-row' + (i === swSel ? ' sel' : '');
+      d.dataset.kind = r.kind; d.dataset.id = r.id;
+      d.innerHTML = `<span class="sw-kind">${r.kind === 'ws' ? 'DIR' : 'PRESET'}</span>` +
+        `<span class="sw-label">${esc(r.label)}</span>` +
+        (r.sub ? `<span class="ws-path">${esc(r.sub)}</span>` : '') +
+        (r.badge ? `<span class="ws-badge">${esc(r.badge)}</span>` : '');
+      d.onclick = () => swAct(r);
+      swList.appendChild(d);
+    });
+  }
+  function swAct(r) {
+    swClose();
+    if (!r) return;
+    if (r.kind === 'ws') {
+      const a = [...state.agents.values()].filter((x) => (x.cwd || '?') === r.id && x.alive).sort((x, y) => x.id - y.id)[0];
+      if (a) focusPane(a.id); else refreshList();
+    } else spawnUi(r.id);
+  }
+  function swOpen() {
+    swEl.classList.remove('hidden');
+    swInput.value = ''; swSel = 0; swBuild('');
+    swInput.focus();
+  }
+  function swClose() { swEl.classList.add('hidden'); }
+  $('sw-open').onclick = swOpen;
+  swInput.oninput = () => { swSel = 0; swBuild(swInput.value); };
+  swInput.onkeydown = (e) => {
+    if (e.key === 'ArrowDown') { e.preventDefault(); swSel = Math.min(swSel + 1, swRows.length - 1); swBuild(swInput.value); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); swSel = Math.max(swSel - 1, 0); swBuild(swInput.value); }
+    else if (e.key === 'Enter') { e.preventDefault(); swAct(swRows[swSel]); }
+  };
+  // ===== empty state =====
+  const esForm = $('es-form');
+  if (esForm) esForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    spawnUi($('es-input').value); $('es-input').value = '';
+    hideSuggest();
+  });
+  for (const b of document.querySelectorAll('.es-chips button[data-p]')) {
+    b.onclick = () => launchHarness([{ preset: b.dataset.p, task: '' }]);
+  }
   window.__sentra = { killFocused, spawnUi, focusPane, state, sendHandoff, openHandoff };
 }
 
