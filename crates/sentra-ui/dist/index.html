@@ -1,71 +1,121 @@
 <!doctype html>
-<html><head><meta charset="utf-8"><title>Sentra</title>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sentra</title>
+<link rel="stylesheet" href="vendor/xterm.css">
 <link rel="stylesheet" href="style.css"></head>
 <body>
-<!-- harness launcher: initial view -->
-<div id="harness">
- <div class="h-kicker">agent console</div>
- <header class="h-top">
- <img src="logo.svg" class="h-logo" alt="Sentra">
- <div class="h-brand"><h1>many terminals, <em>one window</em></h1>
- <p class="muted">spawn hermes, omp, claude, codex - lalu suruh mereka saling lempar kerjaan.</p></div>
- </header>
- <form class="h-bar" id="hform">
- <span class="h-at">@</span>
- <input id="hinput" autocomplete="off" spellcheck="false"
- placeholder="@hermes handle ui @claude handle front end @omp handle backend @codex handle security">
- </form>
- <div class="h-chips" id="hchips">
- <button type="button" data-p="hermes">@hermes</button>
- <button type="button" data-p="claude">@claude</button>
- <button type="button" data-p="omp">@omp</button>
- <button type="button" data-p="codex">@codex</button>
- <button type="button" data-p="bash">@bash</button>
+<!-- Screen 00: First-Run Setup -->
+<div id="firstrun" class="hidden">
+ <div class="h-topbar">
+  <div class="tb-left"><img src="logo.svg" alt="" class="tb-logo"><span class="tb-word">SENTRA</span><span class="tb-sub">initial setup</span></div>
+  <div class="tb-right"><span class="dot live"></span> <span id="fr-daemon">daemon…</span></div>
  </div>
- <div id="hprofiles" class="h-chips"></div>
- <p class="h-hint">Enter = spawn preset &middot; free text = raw argv</p>
- <div id="hstatus" class="h-hint"></div>
+ <div class="h-center-wrap fr-wrap">
+  <div class="fr-kicker">STEP 1 OF 1 · SYSTEM SCAN</div>
+  <h1 class="fr-h">Local CLIs found</h1>
+  <p class="muted">Sentra checks your $PATH. Only binaries that exist can be spawned.</p>
+  <div id="fr-rows"></div>
+  <label class="fr-cwd">Default workspace
+   <input id="fr-cwd" spellcheck="false" autocomplete="off" placeholder="/home/you/project">
+  </label>
+  <div class="fr-actions">
+   <button type="button" id="fr-rescan" class="tb-btn">Rescan</button>
+   <button type="button" id="fr-skip" class="tb-btn">Skip</button>
+   <button type="button" id="fr-go" class="es-cta">Initialize workspace</button>
+  </div>
+  <div id="fr-err" class="fr-err" role="alert" aria-live="assertive" hidden></div>
+ </div>
+</div>
+<!-- Screen 01: Empty Launcher -->
+<div id="harness" class="hidden">
+ <div class="h-topbar">
+  <div class="tb-left"><img src="logo.svg" alt="" class="tb-logo"><span class="tb-word">SENTRA</span></div>
+  <div class="tb-right"><button type="button" class="tb-btn launcher-setbtn">⚙ SETTINGS</button></div>
+ </div>
+ <div class="h-center-wrap">
+  <div class="h-brand">
+   <h1>Many terminals, <span class="h-serif">one window.</span></h1>
+   <p class="muted">Spawn any CLI agent into a daemon-owned PTY. Chain tasks across agents with send &rarr; wait &rarr; read. UI crashes, agents live.</p>
+  </div>
+  <form class="h-bar" id="hform">
+   <span class="h-at">&gt;</span>
+   <input id="hinput" autocomplete="off" spellcheck="false" placeholder="spawn an agent…  e.g.  @claude  or  bash --norc">
+  </form>
+  <div class="h-hint">Enter = spawn preset &middot; free text = raw argv &middot; @name handle task = spawn + send</div>
+   <div id="h-err" class="h-err" role="alert" aria-live="assertive" hidden></div>
+  <div class="h-chips" id="hchips">
+   <button type="button" data-p="claude"><img class="picon" src="/icons/claude.svg" alt=""> CLAUDE</button>
+   <button type="button" data-p="omp"><img class="picon" src="/icons/omp.svg" alt=""> OMP</button>
+   <button type="button" data-p="hermes"><img class="picon" src="/icons/hermes.svg" alt=""> HERMES</button>
+   <button type="button" data-p="codex"><img class="picon" src="/icons/codex.svg" alt=""> CODEX</button>
+   <button type="button" data-p="bash"><img class="picon" src="/icons/bash.svg" alt=""> BASH</button>
+  </div>
+  <div id="hprofiles" class="h-chips"></div>
+  <div class="h-or-divider">─── &nbsp; OR SET CONTEXT FIRST &nbsp; ───</div>
+  <div class="ctx-brief-card">
+   <div class="ctx-kicker">PROJECT CONTEXT (OPTIONAL — TYPED INTO AI AGENTS)</div>
+   <div class="ctx-row"><input id="ctx-repo" autocomplete="off" spellcheck="false" placeholder="GIT CLONE URL OR LOCAL PATH…   e.g.  github.com/dewhush/sentra"></div>
+   <div class="ctx-row"><input id="ctx-brief" autocomplete="off" spellcheck="false" placeholder="BRIEF / TASK CONTEXT…   e.g.  Redesign UI to ArtCraft system tokens"></div>
+   <div class="ctx-dropzone" id="ctx-drop">
+    <div class="ctx-dz-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7.5A1.5 1.5 0 0 1 4.5 6h5l2 2.5h8A1.5 1.5 0 0 1 21 10v8.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5Z"/></svg></div>
+    <div class="ctx-dz-label">DROP FILES OR FOLDERS HERE &middot; OR CLICK TO BROWSE</div>
+    <div class="ctx-dz-sub">SUPPORTED: PDF &middot; TXT &middot; MD &middot; JSON — MULTIPLE FILES OK</div>
+   </div>
+  </div>
+  <div id="hstatus" class="h-daemon-footer">● DAEMON IDLE &middot; SOCKET /RUN/USER/1000/SENTRA.SOCK &middot; 0 AGENTS &middot; RSS 1.8 MB</div>
+ </div>
 </div>
 
 <!-- main app -->
 <div id="topbar" class="topbar">
- <div class="tb-left"><img src="logo.svg" alt="" class="tb-logo"><span class="tb-word">SENTRA</span><span class="tb-sub">many terminals, <em>one window</em></span></div>
- <div class="tb-right" id="tstat"></div>
- <button type="button" id="thmbtn" class="tb-btn" title="toggle theme">&#9680;</button>
- <button type="button" id="setbtn" class="tb-btn">SETTINGS</button>
+ <div class="tb-left"><button type="button" id="mobile-menu-btn" class="tb-btn mobile-menu-btn" aria-label="Toggle workspaces drawer">☰</button><img src="logo.svg" alt="" class="tb-logo"><span class="tb-word">SENTRA</span><span class="tb-sub">many terminals, <em>one window</em></span></div>
+ <div class="tb-center" id="tstat"></div>
+ <div class="tb-right">
+  <span class="tb-daemon" id="tbdaemon"><span class="dot live"></span> Daemon running</span>
+  <span class="tb-rss" id="tbrss"></span>
+  <button type="button" id="thmbtn" class="tb-btn" title="switch to dark theme" aria-label="switch to dark theme"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a6.6 6.6 0 0 0 9.8 9.8Z"/></svg></button>
+  <button type="button" id="setbtn" class="tb-btn">⚙ SETTINGS</button>
+ </div>
+</div>
+<div id="context-strip" class="context-strip">
+ <span class="cs-dot">●</span> <span id="cs-text">0 agents</span>
 </div>
 
-<main id="app" hidden>
+<div id="drawer-backdrop" class="drawer-backdrop hidden" aria-hidden="true"></div>
+
+<main id="app" class="hidden">
+ <h1 class="sr-only">Sentra workspace</h1>
  <section id="main">
- <aside id="roster">
+ <aside id="roster" tabindex="0" aria-label="Workspace folders">
+ <div class="mobile-drawer-handle" aria-hidden="true"></div>
  <div class="roster-title" id="rt-title">WORKSPACE FOLDERS</div>
  <div id="roster-rows"></div>
  <div class="roster-sub">PRESETS</div>
  <div id="roster-presets"></div>
- <button type="button" id="sw-open" class="roster-footbtn">+ SWITCH FOLDER <kbd>&#8984;O</kbd></button>
+ <button type="button" id="sw-open" class="roster-footbtn">+ SWITCH FOLDER <kbd>Ctrl-O</kbd></button>
  <div class="roster-hint"><kbd>CTRL-SHIFT-&uarr;</kbd> split &middot; <kbd>CTRL-SHIFT-W</kbd> kill &middot; <kbd>CTRL-TAB</kbd> cycle &middot; <kbd>R-CLICK</kbd> send to...</div>
+ <div id="roster-daemon" class="roster-daemon"><span class="dot live"></span> <span id="rd-text">DAEMON: http://127.0.0.1:7621</span></div>
  </aside>
  <div id="panes-wrap">
- <div id="grid"></div>
+ <div id="grid" tabindex="0" aria-label="Agent terminals"></div>
  <section id="empty-state" class="hidden">
-  <div class="es-card">
-  <h2>No agents in this workspace</h2>
-  <p class="es-sub">Spawn a preset, or type raw argv below.</p>
-  <form id="es-form">
-   <span class="es-at">@</span><input id="es-input" autocomplete="off" spellcheck="false" placeholder="@claude handle ui &middot; or: bash htop">
-   <button id="es-spawn" type="submit">SPAWN &#8629;</button>
-  </form>
-  <div class="es-chips">
-   <button type="button" data-p="hermes">@hermes</button>
-   <button type="button" data-p="omp">@omp</button>
-   <button type="button" data-p="claude">@claude</button>
-   <button type="button" data-p="codex">@codex</button>
-   <button type="button" data-p="bash">@bash</button>
-  </div>
-  <div class="es-foot">PROJECT: / &middot; DAEMON RUNNING</div>
-  </div>
- </section>
- <div id="handrail" class="hidden"><span class="hr-dot"></span><span id="hr-text"></span></div>
+   <div class="es-card">
+   <div class="es-bolt" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4.5 13.5H11l-1 8.5L19.5 10H13Z"/></svg></div>
+   <h2>No PTY running in this folder</h2>
+   <p class="es-sub">Spawn your first CLI agent, or pick a preset.</p>
+   <button type="button" id="es-spawn" class="es-cta">Spawn Agent <kbd>Ctrl-T</kbd></button>
+   <div class="es-presets">
+    <button type="button" data-p="claude"><img class="picon" src="/icons/claude.svg" alt=""><span class="es-p-name">Claude Code</span><span class="es-p-role">UI &amp; Fullstack</span></button>
+    <button type="button" data-p="omp"><img class="picon" src="/icons/omp.svg" alt=""><span class="es-p-name">OMP</span><span class="es-p-role">Rust Backend</span></button>
+    <button type="button" data-p="codex"><img class="picon" src="/icons/codex.svg" alt=""><span class="es-p-name">Codex</span><span class="es-p-role">Test Harness</span></button>
+    <button type="button" data-p="hermes"><img class="picon" src="/icons/hermes.svg" alt=""><span class="es-p-name">Hermes</span><span class="es-p-role">Recon Runner</span></button>
+    <button type="button" data-p="bash"><img class="picon" src="/icons/bash.svg" alt=""><span class="es-p-name">Bash</span><span class="es-p-role">Shell</span></button>
+   </div>
+   <div class="es-foot" id="es-foot">Tip: drag &amp; drop files anywhere · Ctrl-O jumps to another folder</div>
+   </div>
+  </section>
+  <div id="handrail" class="hidden" role="status" aria-live="polite"><span class="hr-dot"></span><span id="hr-text"></span></div>
  <div id="suggest" hidden></div>
  </div>
  <aside id="handrail-card" class="hidden">
@@ -73,10 +123,11 @@
  <div id="hc-flow"></div>
  <button id="hc-copy" hidden>COPY OUTPUT</button>
  </aside>
+ </section>
  <section id="cmdbar">
- <form id="bar"><span id="prompt">&gt;</span><input id="cmd" autocomplete="off" spellcheck="false" placeholder="preset, @profile, atau argv...">
+ <form id="bar"><span id="prompt">&gt;</span><input id="cmd" autocomplete="off" spellcheck="false" placeholder="preset, @profile, or command argv...">
  <div id="chips"></div>
- <button id="spbtn" type="submit">SPAWN</button>
+ <button id="spbtn" type="submit">Spawn Agent &#8629;</button>
  </form>
  <div id="kbdrow" class="kbdrow">
  <span><kbd>CTRL-SHIFT-&uarr;</kbd> split</span>
@@ -89,15 +140,76 @@
 
 <!-- quick switcher overlay -->
 <!-- settings modal -->
-<div id="settings" class="modal hidden"><div class="mo-box">
-  <div class="mo-head"><span class="mo-title">SENTRA PREFERENCES</span><button id="set-close" class="mo-x" type="button">✕</button></div>
-  <div class="mo-tabs"><button class="mo-tab active" data-tab="presets" type="button">PRESETS</button><button class="mo-tab" data-tab="appearance" type="button">APPEARANCE</button></div>
-  <div class="mo-body" data-panel="presets"><div class="mo-sec">CONFIGURED AGENTS (~/.config/senta presets — read-only list)</div><div id="set-presets"></div></div>
-  <div class="mo-body hidden" data-panel="appearance"><div class="mo-row">THEME <button id="set-theme" type="button" class="tb-btn">DARK</button></div></div>
+<div id="settings" class="modal hidden"><div class="mo-box" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+  <div class="mo-head"><span class="mo-title" id="settings-title">SENTRA PREFERENCES · SETTINGS</span><button id="set-close" class="mo-x" type="button">✕</button></div>
+  <div class="mo-tabs">
+    <button class="mo-tab active" data-tab="presets" type="button">PRESETS</button>
+    <button class="mo-tab" data-tab="personas" type="button">PERSONAS</button>
+    <button class="mo-tab" data-tab="appearance" type="button">APPEARANCE</button>
+    <button class="mo-tab" data-tab="shortcuts" type="button">SHORTCUTS</button>
+    <button class="mo-tab" data-tab="models" type="button">MODELS</button>
+  </div>
+  <div class="mo-body" data-panel="presets">
+    <div class="mo-sec">CONFIGURED AGENTS (~/.config/sentra/presets.json)</div>
+    <div id="set-presets"></div>
+  </div>
+  <div class="mo-body hidden" data-panel="personas">
+    <div class="mo-sec">AGENT PROFILES (~/.config/sentra/profiles.json)</div>
+    <div id="set-personas"><div class="set-row"><span class="set-name">Loading profiles&hellip;</span></div></div>
+  </div>
+  <div class="mo-body hidden" data-panel="appearance">
+    <div class="mo-sec">COLOR THEMES (4 BUILT-IN PRESETS)</div>
+    <div class="th-grid">
+      <div class="th-card" data-th="light"><div class="th-head">LIGHT EDITORIAL <span class="th-desc">Apple clean</span></div><div class="th-swatches"><span class="th-dot" style="background:#FBFBFD"></span><span class="th-dot" style="background:#1D1D1F"></span><span class="th-dot" style="background:#2D81FF"></span></div></div>
+      <div class="th-card" data-th="dark"><div class="th-head">DARK OLED <span class="th-desc">Night contrast</span></div><div class="th-swatches"><span class="th-dot" style="background:#101014"></span><span class="th-dot" style="background:#F2F1EE"></span><span class="th-dot" style="background:#2D81FF"></span></div></div>
+      <div class="th-card" data-th="cyberpunk"><div class="th-head">CYBERPUNK <span class="th-desc">Neon glow</span></div><div class="th-swatches"><span class="th-dot" style="background:#08080C"></span><span class="th-dot" style="background:#00F0FF"></span><span class="th-dot" style="background:#FF0055"></span></div></div>
+      <div class="th-card" data-th="sepia"><div class="th-head">SEPIA PAPER <span class="th-desc">Warm reading</span></div><div class="th-swatches"><span class="th-dot" style="background:#FBF0D9"></span><span class="th-dot" style="background:#382C1E"></span><span class="th-dot" style="background:#B5531D"></span></div></div>
+    </div>
+    <div class="mo-sec">ACCESSIBILITY &amp; MOTION</div>
+    <div class="mo-row" style="margin-top:8px"><label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text2);cursor:pointer"><input type="checkbox" id="th-motion"> Reduce Motion (Disable window animations)</label></div>
+  </div>
+  <div class="mo-body hidden" data-panel="shortcuts">
+    <div class="mo-sec">KEYBOARD SHORTCUTS MATRIX</div>
+    <table class="sc-table">
+      <tbody>
+        <tr><td class="sc-cat">Workspace</td><td class="sc-desc">Kill focused agent (arm, then confirm within 3s)</td><td class="sc-keys"><kbd>Ctrl-Shift-W</kbd></td></tr>
+        <tr><td class="sc-cat">Workspace</td><td class="sc-desc">Cycle agent panes</td><td class="sc-keys"><kbd>Ctrl-Tab</kbd></td></tr>
+        <tr><td class="sc-cat">Workspace</td><td class="sc-desc">Split (spawn the same preset beside focus)</td><td class="sc-keys"><kbd>Ctrl-Shift-→</kbd></td></tr>
+        <tr><td class="sc-cat">Workspace</td><td class="sc-desc">Focus command bar (empty-folder screen only)</td><td class="sc-keys"><kbd>Ctrl-T</kbd></td></tr>
+        <tr><td class="sc-cat">Global</td><td class="sc-desc">Quick folder &amp; workspace switcher</td><td class="sc-keys"><kbd>Ctrl-O</kbd></td></tr>
+        <tr><td class="sc-cat">Global</td><td class="sc-desc">Preferences &amp; shortcuts cheat-sheet</td><td class="sc-keys"><kbd>?</kbd></td></tr>
+        <tr><td class="sc-cat">Global</td><td class="sc-desc">Toggle Dark / Light theme</td><td class="sc-keys"><kbd>Top-bar ◐</kbd></td></tr>
+        <tr><td class="sc-cat">Global</td><td class="sc-desc">Close the topmost overlay, else focus the PTY</td><td class="sc-keys"><kbd>Esc</kbd></td></tr>
+        <tr><td class="sc-cat">Input</td><td class="sc-desc">Dispatch the command bar</td><td class="sc-keys"><kbd>Enter ↵</kbd></td></tr>
+        <tr><td class="sc-cat">Input</td><td class="sc-desc">Walk command history</td><td class="sc-keys"><kbd>↑</kbd> <kbd>↓</kbd></td></tr>
+        <tr><td class="sc-cat">Workspace</td><td class="sc-desc">Open inter-agent handoff dialog</td><td class="sc-keys"><kbd>Right-Click</kbd></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="mo-body hidden" data-panel="models">
+    <div class="mo-sec">MODELS</div>
+    <div class="set-row"><span class="set-sub">Sentra does not route models. Each agent uses its own CLI and that CLI's credentials.</span></div>
+  </div>
   <div class="mo-foot"><button id="set-done" type="button" class="mo-btn primary">DONE</button></div>
 </div></div>
+
+<!-- drag & drop file attach overlay (Screen 05b) -->
+<div id="drop-overlay" class="hidden">
+  <div class="drop-box" role="dialog" aria-modal="true" aria-labelledby="drop-title">
+    <div class="drop-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4m0 0 4 4m-4-4L8 8"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg></div>
+    <h3 id="drop-title">Drop Files to Inject into Workspace</h3>
+    <p>Types file paths into the target agent's PTY (left unsubmitted)</p>
+    <div id="drop-files-preview" class="chip" style="margin:4px 0">Ready to inject</div>
+    <div class="drop-target-row">
+      <span>Attach to:</span>
+      <select id="drop-target-agent"><option value="all">Inject All Agents</option></select>
+      <button type="button" id="drop-inject" class="es-cta" disabled>Inject</button>
+    </div>
+    <div class="drop-hint">Escape cancels · PDF, TXT, MD, JSON · under 10 MB</div>
+  </div>
+</div>
 <div id="switcher" class="hidden">
- <div class="sw-box">
+ <div class="sw-box" role="dialog" aria-modal="true" aria-labelledby="sw-input">
  <input id="sw-input" autocomplete="off" spellcheck="false" placeholder="Jump to folder or preset&hellip;">
  <div id="sw-list"></div>
  </div>
@@ -105,16 +217,39 @@
 
 <!-- handoff dialog -->
 <div id="handoff" class="hidden">
- <div class="ho-box">
- <div class="ho-title">SEND TO...</div>
+ <div class="ho-box" role="dialog" aria-modal="true" aria-labelledby="ho-title">
+ <div class="ho-title" id="ho-title">SEND TO...</div>
  <select id="ho-target"></select>
  <textarea id="ho-msg" rows="4"></textarea>
  <div class="ho-actions">
   <button type="button" id="ho-cancel">Cancel</button>
   <button type="button" id="ho-send" class="primary">Send</button>
  </div>
- <div id="ho-status"></div>
+ <div id="ho-status" role="status" aria-live="polite"></div>
  </div>
 </div>
+<!-- audit badge: visible only with ?audit=1 (screen 00-10 marker) -->
+<div id="audit-badge" class="hidden" role="status" aria-live="polite"></div>
+
+<!-- Mobile Bottom Tab Bar (390px companion) -->
+<nav id="mobile-tabbar" class="mobile-tabbar" aria-label="Mobile navigation">
+ <button type="button" class="mtab-btn active" data-tab="terminal">
+  <span class="mtab-icon">⚡</span>
+  <span class="mtab-label">Terminal</span>
+ </button>
+ <button type="button" class="mtab-btn" data-tab="swarm">
+  <span class="mtab-icon">●</span>
+  <span class="mtab-label">Swarm</span>
+ </button>
+ <button type="button" class="mtab-btn" data-tab="workspaces">
+  <span class="mtab-icon">📁</span>
+  <span class="mtab-label">Workspaces</span>
+ </button>
+ <button type="button" class="mtab-btn" data-tab="settings">
+  <span class="mtab-icon">⚙</span>
+  <span class="mtab-label">Settings</span>
+ </button>
+</nav>
+
 <script type="module" src="app.js"></script>
 </body></html>
