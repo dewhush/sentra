@@ -79,6 +79,64 @@ churn the allocator can retain pages and the same daemon reports more; the top
 bar shows the daemon's live measured RSS, so the number you see is the number
 this build reports, not a claim in a file.
 
+## 🗺️ Architectural Roadmap
+
+> Sentra was built to eliminate the 500 MB–1 GB RAM overhead of Electron-based harnesses while ensuring zero UI crash propagation. Below is our phased development roadmap informed by state-of-the-art agent harnesses. Full technical specifications and architecture RFCs are documented in [ROADMAP.md](ROADMAP.md).
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                   v0.1 Core Foundation (Shipped)            │
+│  Daemon PTY Engine · send→wait→read · Multi-Dispatch · S00-S10│
+└──────────────────────────────┬──────────────────────────────┘
+                               │
+       ┌───────────────────────┴───────────────────────┐
+       ▼                                               ▼
+┌───────────────────────────────┐       ┌───────────────────────────────┐
+│ v0.2 Worktree Sandboxing      │       │ v0.3 MCP Tool Hub & Bridge    │
+│ Isolated Git Worktree per PTY │       │ Daemon-level MCP multiplexer  │
+└──────────────┬────────────────┘       └───────────────┬───────────────┘
+               │                                        │
+               └───────────────────────┬────────────────┘
+                                       │
+                                       ▼
+┌─────────────────────────────────────────────────────────────┐
+│ v0.4 Autonomous Workflow DAGs & Artifact Passing            │
+│ Chain agents with exit-code triggers & sentra.yaml pipelines│
+└──────────────────────────────┬──────────────────────────────┘
+                               │
+       ┌───────────────────────┴───────────────────────┐
+       ▼                                               ▼
+┌───────────────────────────────┐       ┌───────────────────────────────┐
+│ v0.5 Semantic Transcript Layer│       │ v0.6 Checkpoints & Fast Undo  │
+│ Dual-mode xterm + Card folding│       │ Pre-turn git snapshot rollback│
+└───────────────────────────────┘       └───────────────────────────────┘
+```
+
+### Phased Milestones
+
+| Phase | Milestone | Focus Areas | Status |
+|:---:|---|---|:---:|
+| **v0.1** | **Core Foundation** | Headless Rust daemon, PTY ring buffers, `send→wait→read` triad, dynamic grid | `SHIPPED` |
+| **v0.2** | **Worktree Sandboxing** | Auto-provisioned Git worktrees (`.sentra/worktrees/`), Landlock FS isolation | `IN DESIGN` |
+| **v0.3** | **MCP Tool Bridge** | Daemon-hosted Model Context Protocol multiplexer + Sentra MCP tools | `PLANNING` |
+| **v0.4** | **Workflow DAGs** | Declarative pipelines (`sentra.yaml`), quiet & exit-code triggers | `PLANNING` |
+| **v0.5** | **Semantic Transcript** | Dual-mode terminal + collapsible card-folding transcript & diff viewer | `CONCEPT` |
+| **v0.6** | **Checkpoints & Undo** | Pre-turn Git tree snapshots, one-click session rewind (`/undo`) | `CONCEPT` |
+
+---
+
+### Harness Comparison Matrix
+
+| Dimension | Sentra | Claude Code | Codex CLI | OpenCode | Warp |
+|---|:---:|:---:|:---:|:---:|:---:|
+| **Core Architecture** | **Native Rust Daemon** | Node CLI / Web | Rust TUI | Go Server / TUI | Closed-source ADE |
+| **Idle Memory (Daemon)** | **~2.8 MB** | ~120 MB | ~45 MB | ~80 MB | ~450 MB |
+| **Crash Immunity** | **Yes (Daemon owns PTY)** | No | No | Partial | Yes |
+| **Multi-Agent Grid** | **Native dynamic grid** | Background jobs | Subagents | Tab switch | Panes |
+| **Inter-Agent Handoff** | **`send→wait→read` triad** | Teleport | Findings return | Parent/child | Manual |
+| **Worktree Sandboxing** | *Phase 1 (v0.2)* | Manual | Bubblewrap | Planned | No |
+| **Daemon MCP Bridge** | *Phase 2 (v0.3)* | Client only | Server inspect | Config-based | No |
+
 ## Security notes
 
 The unix socket is same-user only (`$XDG_RUNTIME_DIR/sentra`, mode 700). The
