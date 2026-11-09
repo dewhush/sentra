@@ -3,6 +3,7 @@
 </p>
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="License: MIT"></a>
+  <a href="https://github.com/dewhush/sentra/actions/workflows/ci.yml"><img src="https://github.com/dewhush/sentra/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/badge/rust-2024-orange" alt="Rust 2024">
   <img src="https://img.shields.io/badge/platform-Linux-informational" alt="Platform: Linux">
   <img src="https://img.shields.io/badge/daemon%20RSS-%E2%89%A430%20MB%20budget-brightgreen" alt="Daemon RSS budget: 30 MB">
